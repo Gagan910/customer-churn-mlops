@@ -155,6 +155,12 @@ with mlflow.start_run(run_name="tuned_xgboost"):
     # Log artifacts
     mlflow.log_artifact(str(MODEL_PATH), artifact_path="model")
     mlflow.log_artifact(str(PREPROCESSOR_PATH), artifact_path="model")
+    
+    mlflow.xgboost.log_model(
+    best_model,
+    artifact_path="xgboost-model",
+    registered_model_name="customer-churn-model"
+    )
 
     print("Training completed successfully.")
     print("Best parameters:", grid_search.best_params_)
