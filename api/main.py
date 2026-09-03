@@ -109,10 +109,10 @@ def predict(request: Request, customer_data: CustomerData):
         return result
     except Exception as e:
         logger.exception("Prediction failed")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Prediction failed: {str(e)}"
-        )
+    raise HTTPException(
+        status_code=500,
+        detail="Prediction failed. Please try again later."
+    )
         
         
 @app.post(
