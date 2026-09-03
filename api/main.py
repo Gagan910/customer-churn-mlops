@@ -1,7 +1,11 @@
+import logging
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import Literal
 from src.predict import predict_churn
+
+logger = logging.getLogger(__name__)
 
 class CustomerData(BaseModel):
     
@@ -52,6 +56,7 @@ def predict(customer_data: CustomerData):
         result = predict_churn(customer_data.model_dump())
         return result
     except Exception as e:
+        logger.exception("Prediction failed")
         raise HTTPException(
             status_code=500,
             detail=f"Prediction failed: {str(e)}"
