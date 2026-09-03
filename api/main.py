@@ -116,6 +116,25 @@ def health():
         "Predicts the probability that a customer will churn "
         "and returns the final churn prediction."
     ),
+    responses={
+        200: {
+            "description": "Successful churn prediction",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "churn_probability": 0.7139,
+                        "prediction": 1
+                    }
+                }
+            }
+        },
+        401: {
+            "description": "Invalid or missing API key"
+        },
+        429: {
+            "description": "Rate limit exceeded"
+        }
+    }
 )
 
 @limiter.limit("10/minute")
