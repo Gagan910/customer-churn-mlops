@@ -1,3 +1,5 @@
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
 import pandas as pd
 
 from evidently import Report
@@ -13,6 +15,15 @@ current_data = pd.read_csv(CURRENT_DATA_PATH)
 
 
 current_data = current_data.tail(500)
+
+actual = current_data["Churn"].map({"No": 0, "Yes": 1})
+predicted = current_data["prediction"]
+
+print("\nModel Performance:")
+print(f"Accuracy:  {accuracy_score(actual, predicted):.2%}")
+print(f"Precision: {precision_score(actual, predicted):.2%}")
+print(f"Recall:    {recall_score(actual, predicted):.2%}")
+print(f"F1 Score:  {f1_score(actual, predicted):.2%}")
 
 if len(current_data) < 500:
     raise ValueError(
@@ -69,3 +80,4 @@ result.save_html("monitoring/drift_report.html")
 
 print("Data drift report generated successfully.")
 print("Open monitoring/drift_report.html to view the drift results.")
+

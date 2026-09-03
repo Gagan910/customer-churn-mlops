@@ -13,11 +13,8 @@ INPUT_DATA_PATH = "data/processed/current_data.csv"
 
 current_data = pd.read_csv(INPUT_DATA_PATH)
 
-# Remove target column if present
-current_data = current_data.drop(columns=["Churn"], errors="ignore")
 
-
-for _, row in current_data.head(500).iterrows():
+for _, row in current_data.sample(n=500).iterrows():
     customer_data = row.to_dict()
 
     # Remove columns that are not model inputs
