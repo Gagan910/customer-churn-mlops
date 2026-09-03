@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import time
+import uuid
 
 from fastapi import FastAPI, HTTPException, Header, Depends, Request, APIRouter
 from slowapi.errors import RateLimitExceeded
@@ -81,13 +82,14 @@ app.add_exception_handler(
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
-
+    request_id = str(uuid.uuid4())
     response = await call_next(request)
 
     duration = time.time() - start_time
 
     logger.info(
         json.dumps({
+            "request_id": request_id,
             "method": request.method,
             "path": request.url.path,
             "status_code": response.status_code,
