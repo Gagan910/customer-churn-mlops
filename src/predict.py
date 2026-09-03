@@ -1,5 +1,5 @@
 import joblib
-import mlflow
+
 import os
 import pandas as pd
 from dotenv import load_dotenv
@@ -15,6 +15,7 @@ MODEL_PATH = BASE_DIR / "models" / "churn_model.pkl"
 PREPROCESSOR_PATH = BASE_DIR / "models" / "preprocessor.pkl"
 
 if MODEL_SOURCE == "mlflow":
+    import mlflow
     model = mlflow.xgboost.load_model(
         "models:/customer-churn-model@production"
     )
