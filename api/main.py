@@ -57,7 +57,7 @@ class PredictionResponse(BaseModel):
     churn_probability: float
     prediction: int
 
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=lambda request: request.headers.get("x-api-key", "anonymous"))
 
 app = FastAPI(title="Customer Churn Prediction API")
 
