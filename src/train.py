@@ -158,7 +158,7 @@ with mlflow.start_run(run_name="tuned_xgboost"):
     
     mlflow.xgboost.log_model(
     best_model,
-    artifact_path="xgboost-model",
+    name="xgboost-model",
     registered_model_name="customer-churn-model"
     )
 
