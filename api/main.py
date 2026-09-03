@@ -10,7 +10,7 @@ from slowapi.util import get_remote_address
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from typing import Literal
-from src.predict import predict_churn
+from src.predict import predict_churn, model, preprocessor
 from src.explain import explain_prediction
 
 logger = logging.getLogger(__name__)
@@ -93,7 +93,11 @@ def home():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "model_loaded": model is not None,
+        "preprocessor_loaded": preprocessor is not None
+    }
 
 
 @app.post(
