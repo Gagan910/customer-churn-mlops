@@ -1,7 +1,8 @@
 import logging
 import os
+import time
 
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Header, Depends, Request
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from typing import Literal
@@ -53,6 +54,24 @@ class PredictionResponse(BaseModel):
     prediction: int
 
 app = FastAPI(title="Customer Churn Prediction API")
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+
+    response = await call_next(request)
+
+    duration = time.time() - start_time
+
+    logger.info(
+        "%s %s - %s - %.3fs",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration
+    )
+
+    return response
 
 
 @app.get("/")
