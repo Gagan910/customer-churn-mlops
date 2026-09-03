@@ -1,9 +1,12 @@
 import joblib
-
+import logging
 import os
 import pandas as pd
 from dotenv import load_dotenv
 from pathlib import Path
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -29,12 +32,18 @@ CHURN_THRESHOLD = 0.35
 
 def predict_churn(customer_data):
     data = pd.DataFrame([customer_data])
+    logger.info("Churn prediction request received")
 
     processed_data = preprocessor.transform(data)
 
     probability = model.predict_proba(processed_data)[0][1]
 
     prediction = int(probability >= CHURN_THRESHOLD)
+    logger.info(
+        "Churn prediction completed: probability=%.4f, prediction=%d",
+        probability,
+        prediction
+    )
 
     return {
         "churn_probability": float(probability),
