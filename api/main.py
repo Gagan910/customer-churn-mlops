@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import time
@@ -86,11 +87,12 @@ async def log_requests(request: Request, call_next):
     duration = time.time() - start_time
 
     logger.info(
-        "%s %s - %s - %.3fs",
-        request.method,
-        request.url.path,
-        response.status_code,
-        duration
+        json.dumps({
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_seconds": round(duration, 3)
+        })
     )
 
     return response
