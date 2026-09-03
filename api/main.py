@@ -110,8 +110,14 @@ def health():
 @app.post(
     "/predict",
     response_model=PredictionResponse,
-    dependencies=[Depends(verify_api_key)]
+    dependencies=[Depends(verify_api_key)],
+    summary="Predict customer churn",
+    description=(
+        "Predicts the probability that a customer will churn "
+        "and returns the final churn prediction."
+    ),
 )
+
 @limiter.limit("10/minute")
 
 def predict(request: Request, customer_data: CustomerData):
