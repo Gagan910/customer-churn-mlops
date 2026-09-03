@@ -179,3 +179,78 @@ def test_explain_has_impact(monkeypatch):
     ]
     assert "explanation" in explanations[0]
     assert "churn risk" in explanations[0]["explanation"]
+    
+def test_v1_predict_with_api_key(monkeypatch):
+    monkeypatch.setattr("api.main.API_KEY", "test-api-key")
+
+    customer = {
+        "gender": "Female",
+        "SeniorCitizen": 0,
+        "Partner": "Yes",
+        "Dependents": "No",
+        "tenure": 5,
+        "PhoneService": "Yes",
+        "MultipleLines": "No",
+        "InternetService": "Fiber optic",
+        "OnlineSecurity": "No",
+        "OnlineBackup": "No",
+        "DeviceProtection": "No",
+        "TechSupport": "No",
+        "StreamingTV": "Yes",
+        "StreamingMovies": "Yes",
+        "Contract": "Month-to-month",
+        "PaperlessBilling": "Yes",
+        "PaymentMethod": "Electronic check",
+        "MonthlyCharges": 85.0,
+        "TotalCharges": 425.0
+    }
+
+    response = client.post(
+        "/v1/predict",
+        json=customer,
+        headers={"x-api-key": "test-api-key"}
+    )
+
+    assert response.status_code == 200
+    assert "churn_probability" in response.json()
+    assert "prediction" in response.json()
+    
+def test_v1_explain_with_api_key(monkeypatch):
+    monkeypatch.setattr("api.main.API_KEY", "test-api-key")
+
+    customer = {
+        "gender": "Female",
+        "SeniorCitizen": 0,
+        "Partner": "Yes",
+        "Dependents": "No",
+        "tenure": 5,
+        "PhoneService": "Yes",
+        "MultipleLines": "No",
+        "InternetService": "Fiber optic",
+        "OnlineSecurity": "No",
+        "OnlineBackup": "No",
+        "DeviceProtection": "No",
+        "TechSupport": "No",
+        "StreamingTV": "Yes",
+        "StreamingMovies": "Yes",
+        "Contract": "Month-to-month",
+        "PaperlessBilling": "Yes",
+        "PaymentMethod": "Electronic check",
+        "MonthlyCharges": 85.0,
+        "TotalCharges": 425.0
+    }
+
+    response = client.post(
+        "/v1/explain",
+        json=customer,
+        headers={"x-api-key": "test-api-key"}
+    )
+
+    assert response.status_code == 200
+
+    explanations = response.json()["prediction"]
+
+    assert len(explanations) > 0
+    assert "feature" in explanations[0]
+    assert "impact" in explanations[0]
+    assert "explanation" in explanations[0]

@@ -2,7 +2,7 @@ import logging
 import os
 import time
 
-from fastapi import FastAPI, HTTPException, Header, Depends, Request
+from fastapi import FastAPI, HTTPException, Header, Depends, Request, APIRouter
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 from slowapi import Limiter
@@ -68,6 +68,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
+v1_router = APIRouter(prefix="/v1")
+
 app.state.limiter = limiter
 
 app.add_exception_handler(
@@ -92,7 +94,6 @@ async def log_requests(request: Request, call_next):
     )
 
     return response
-
 
 @app.get("/")
 def home():
@@ -149,7 +150,18 @@ def predict(request: Request, customer_data: CustomerData):
         status_code=500,
         detail="Prediction failed. Please try again later."
     )
-        
+@v1_router.post(
+    "/predict",
+    response_model=PredictionResponse,
+    dependencies=[Depends(verify_api_key)],
+    summary="Predict customer churn (v1)",
+    description="Version 1 of the customer churn prediction endpoint.",
+)
+@limiter.limit("10/minute")
+def predict_v1(request: Request, customer_data: CustomerData):
+    return predict(request, customer_data)
+
+    
         
 @app.post(
     "/explain",
@@ -196,3 +208,15 @@ def explain(request: Request, customer_data: CustomerData):
             status_code=500,
             detail=f"SHAP explanation failed: {str(e)}"
         )
+
+@v1_router.post(
+    "/explain",
+    dependencies=[Depends(verify_api_key)],
+    summary="Explain churn prediction (v1)",
+    description="Version 1 of the SHAP-based churn explanation endpoint.",
+)
+@limiter.limit("10/minute")
+def explain_v1(request: Request, customer_data: CustomerData):
+    return explain(request, customer_data)
+
+app.include_router(v1_router)
