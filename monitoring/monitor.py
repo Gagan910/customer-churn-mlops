@@ -1,4 +1,10 @@
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_auc_score,
+)
 
 import pandas as pd
 
@@ -35,6 +41,26 @@ if f1 < F1_THRESHOLD:
     )
 
 print(f"F1 threshold check passed: {f1:.2%} >= {F1_THRESHOLD:.2%}")
+
+roc_auc = roc_auc_score(
+    actual,
+    current_data["churn_probability"]
+)
+
+ROC_AUC_THRESHOLD = 0.75
+
+print(f"ROC-AUC:   {roc_auc:.2%}")
+
+if roc_auc < ROC_AUC_THRESHOLD:
+    raise ValueError(
+        f"Model performance alert: ROC-AUC {roc_auc:.2%} "
+        f"is below the threshold of {ROC_AUC_THRESHOLD:.2%}"
+    )
+
+print(
+    f"ROC-AUC threshold check passed: "
+    f"{roc_auc:.2%} >= {ROC_AUC_THRESHOLD:.2%}"
+)
 
 if len(current_data) < 500:
     raise ValueError(
