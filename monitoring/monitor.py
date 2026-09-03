@@ -14,6 +14,12 @@ current_data = pd.read_csv(CURRENT_DATA_PATH)
 # Use the latest 500 production predictions as the monitoring window
 current_data = current_data.tail(500)
 
+if len(current_data) < 500:
+    raise ValueError(
+        f"Not enough prediction data for monitoring. "
+        f"Expected 500 rows, found {len(current_data)}."
+    )
+
 current_data = current_data.drop(
     columns=["timestamp", "churn_probability", "prediction"],
     errors="ignore"
