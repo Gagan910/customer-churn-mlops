@@ -3,6 +3,10 @@ import os
 import time
 
 from fastapi import FastAPI, HTTPException, Header, Depends, Request
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from typing import Literal
@@ -53,7 +57,16 @@ class PredictionResponse(BaseModel):
     churn_probability: float
     prediction: int
 
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="Customer Churn Prediction API")
+
+app.state.limiter = limiter
+
+app.add_exception_handler(
+    RateLimitExceeded,
+    _rate_limit_exceeded_handler
+)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -88,7 +101,9 @@ def health():
     response_model=PredictionResponse,
     dependencies=[Depends(verify_api_key)]
 )
-def predict(customer_data: CustomerData):
+@limiter.limit("10/minute")
+
+def predict(request: Request, customer_data: CustomerData):
     try:
         result = predict_churn(customer_data.model_dump())
         return result
@@ -104,7 +119,8 @@ def predict(customer_data: CustomerData):
     "/explain",
     dependencies=[Depends(verify_api_key)]
 )
-def explain(customer_data: CustomerData):
+@limiter.limit("10/minute")
+def explain(request: Request, customer_data: CustomerData):
     try:
         return explain_prediction(customer_data.model_dump())
     except Exception as e:

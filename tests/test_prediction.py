@@ -97,3 +97,39 @@ def test_health_is_public():
 
     assert response.status_code == 200
     assert response.json()["status"] == "healthy"
+    
+def test_rate_limit():
+    
+    customer = {
+        "gender": "Female",
+        "SeniorCitizen": 0,
+        "Partner": "Yes",
+        "Dependents": "No",
+        "tenure": 5,
+        "PhoneService": "Yes",
+        "MultipleLines": "No",
+        "InternetService": "Fiber optic",
+        "OnlineSecurity": "No",
+        "OnlineBackup": "No",
+        "DeviceProtection": "No",
+        "TechSupport": "No",
+        "StreamingTV": "Yes",
+        "StreamingMovies": "Yes",
+        "Contract": "Month-to-month",
+        "PaperlessBilling": "Yes",
+        "PaymentMethod": "Electronic check",
+        "MonthlyCharges": 85.0,
+        "TotalCharges": 425.0
+    }
+    
+    responses = []
+
+    for _ in range(11):
+        response = client.post(
+            "/predict",
+            json=customer,
+            headers={"x-api-key": "my-secret-key-123"}
+        )
+        responses.append(response.status_code)
+
+    assert 429 in responses
