@@ -29,3 +29,9 @@ jobs:
       - name: Run drift monitoring
         run: |
           python monitoring/monitor.py
+
+      - name: Upload drift report
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-report
+          path: monitoring/drift_report.html
