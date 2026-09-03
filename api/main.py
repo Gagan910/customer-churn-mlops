@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import Literal
 from src.predict import predict_churn
+from src.explain import explain_prediction
 
 logger = logging.getLogger(__name__)
 
@@ -60,4 +61,16 @@ def predict(customer_data: CustomerData):
         raise HTTPException(
             status_code=500,
             detail=f"Prediction failed: {str(e)}"
+        )
+        
+        
+@app.post("/explain")
+def explain(customer_data: CustomerData):
+    try:
+        return explain_prediction(customer_data.model_dump())
+    except Exception as e:
+        logger.exception("SHAP explanation failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"SHAP explanation failed: {str(e)}"
         )
