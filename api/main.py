@@ -41,6 +41,10 @@ app = FastAPI(title="Customer Churn Prediction API")
 def home():
     return {"message": "Customer Churn Prediction API is running"}
 
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
 
 @app.post("/predict", response_model=PredictionResponse)
 def predict(customer_data: CustomerData):
