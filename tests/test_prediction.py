@@ -1,6 +1,9 @@
+from fastapi.testclient import TestClient
 from src.predict import predict_churn
 from src.explain import explain_prediction
+from api.main import app
 
+client = TestClient(app)
 
 def test_prediction():
     customer = {
@@ -65,3 +68,30 @@ def test_explanation():
         assert "feature" in explanation
         assert "value" in explanation
         assert "shap_value" in explanation
+        
+def test_predict_without_api_key():
+    response = client.post("/predict", json={})
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or missing API key"
+    
+def test_predict_with_api_key():
+    response = client.post(
+        "/predict",
+        json={},
+        headers={"x-api-key": "my-secret-key-123"}
+    )
+
+    assert response.status_code != 401
+    
+def test_explain_without_api_key():
+    response = client.post("/explain", json={})
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or missing API key"
+    
+def test_health_is_public():
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "healthy"
