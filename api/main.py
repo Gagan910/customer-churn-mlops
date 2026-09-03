@@ -134,7 +134,12 @@ def predict(request: Request, customer_data: CustomerData):
         
 @app.post(
     "/explain",
-    dependencies=[Depends(verify_api_key)]
+    dependencies=[Depends(verify_api_key)],
+    summary="Explain churn prediction",
+    description=(
+        "Provides SHAP-based explanations showing which customer "
+        "features increase or decrease the predicted churn risk."
+    ),
 )
 @limiter.limit("10/minute")
 def explain(request: Request, customer_data: CustomerData):
