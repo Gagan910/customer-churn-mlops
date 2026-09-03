@@ -256,3 +256,16 @@ def test_v1_explain_with_api_key(monkeypatch):
     assert "feature" in explanations[0]
     assert "impact" in explanations[0]
     assert "explanation" in explanations[0]
+    
+def test_predict_invalid_input(monkeypatch):
+    monkeypatch.setattr("api.main.API_KEY", "test-api-key")
+
+    response = client.post(
+        "/predict",
+        json={
+            "gender": "InvalidGender"
+        },
+        headers={"x-api-key": "test-api-key"}
+    )
+
+    assert response.status_code == 422
