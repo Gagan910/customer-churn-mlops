@@ -11,7 +11,7 @@ CURRENT_DATA_PATH = "data/processed/prediction_logs.csv"
 reference_data = pd.read_csv(REFERENCE_DATA_PATH)
 current_data = pd.read_csv(CURRENT_DATA_PATH)
 
-# Use the latest 500 production predictions as the monitoring window
+
 current_data = current_data.tail(500)
 
 if len(current_data) < 500:
@@ -20,10 +20,22 @@ if len(current_data) < 500:
         f"Expected 500 rows, found {len(current_data)}."
     )
 
+
+# Prediction monitoring summary
+print(f"Monitoring window: {len(current_data)} predictions")
+print(f"Predicted churn rate: {current_data['prediction'].mean():.2%}")
+print(
+    f"Average churn probability: "
+    f"{current_data['churn_probability'].mean():.2%}"
+)
+
+
+# Remove prediction-specific columns from drift monitoring
 current_data = current_data.drop(
     columns=["timestamp", "churn_probability", "prediction"],
     errors="ignore"
 )
+
 
 # Remove identifier and target columns from drift monitoring
 columns_to_exclude = ["customerID", "Churn"]
@@ -39,6 +51,7 @@ current_data = current_data.drop(
 )
 
 
+# Generate data drift report
 report = Report(
     [
         DataDriftPreset()
