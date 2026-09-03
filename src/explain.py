@@ -43,6 +43,11 @@ def explain_prediction(customer_data):
                 "feature": original_feature,
                 "value": customer_data[original_feature],
                 "shap_value": float(total_shap),
+                "impact": (
+                    "increases_churn"
+                    if total_shap > 0
+                    else "decreases_churn"
+                ),
             }
         )
 

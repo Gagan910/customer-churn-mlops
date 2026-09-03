@@ -134,3 +134,46 @@ def test_rate_limit(monkeypatch):
         responses.append(response.status_code)
 
     assert 429 in responses
+    
+    
+def test_explain_has_impact(monkeypatch):
+    monkeypatch.setattr("api.main.API_KEY", "test-api-key")
+
+    customer = {
+        "gender": "Female",
+        "SeniorCitizen": 0,
+        "Partner": "Yes",
+        "Dependents": "No",
+        "tenure": 5,
+        "PhoneService": "Yes",
+        "MultipleLines": "No",
+        "InternetService": "Fiber optic",
+        "OnlineSecurity": "No",
+        "OnlineBackup": "No",
+        "DeviceProtection": "No",
+        "TechSupport": "No",
+        "StreamingTV": "Yes",
+        "StreamingMovies": "Yes",
+        "Contract": "Month-to-month",
+        "PaperlessBilling": "Yes",
+        "PaymentMethod": "Electronic check",
+        "MonthlyCharges": 85.0,
+        "TotalCharges": 425.0
+    }
+
+    response = client.post(
+        "/explain",
+        json=customer,
+        headers={"x-api-key": "test-api-key"}
+    )
+
+    assert response.status_code == 200
+
+    explanations = response.json()["prediction"]
+
+    assert len(explanations) > 0
+    assert "impact" in explanations[0]
+    assert explanations[0]["impact"] in [
+        "increases_churn",
+        "decreases_churn"
+    ]
