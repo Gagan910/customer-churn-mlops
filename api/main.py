@@ -59,7 +59,14 @@ class PredictionResponse(BaseModel):
 
 limiter = Limiter(key_func=lambda request: request.headers.get("x-api-key", "anonymous"))
 
-app = FastAPI(title="Customer Churn Prediction API")
+app = FastAPI(
+    title="Customer Churn Prediction API",
+    description=(
+        "Production-ready machine learning API for predicting "
+        "customer churn probability and providing SHAP-based explanations."
+    ),
+    version="1.0.0",
+)
 
 app.state.limiter = limiter
 
