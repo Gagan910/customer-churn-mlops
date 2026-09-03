@@ -159,6 +159,32 @@ def predict(request: Request, customer_data: CustomerData):
         "Provides SHAP-based explanations showing which customer "
         "features increase or decrease the predicted churn risk."
     ),
+    responses={
+        200: {
+            "description": "Successful SHAP explanation",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "prediction": [
+                            {
+                                "feature": "tenure",
+                                "value": 5,
+                                "shap_value": 0.7123,
+                                "impact": "increases_churn",
+                                "explanation": "tenure = 5 increases churn risk."
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        401: {
+            "description": "Invalid or missing API key"
+        },
+        429: {
+            "description": "Rate limit exceeded"
+        }
+    }
 )
 @limiter.limit("10/minute")
 def explain(request: Request, customer_data: CustomerData):
