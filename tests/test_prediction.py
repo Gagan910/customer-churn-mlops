@@ -98,7 +98,8 @@ def test_health_is_public():
     assert response.status_code == 200
     assert response.json()["status"] == "healthy"
     
-def test_rate_limit():
+def test_rate_limit(monkeypatch):
+    monkeypatch.setattr("api.main.API_KEY", "test-api-key")
     
     customer = {
         "gender": "Female",
@@ -128,7 +129,7 @@ def test_rate_limit():
         response = client.post(
             "/predict",
             json=customer,
-            headers={"x-api-key": "my-secret-key-123"}
+            headers={"x-api-key": "test-api-key"}
         )
         responses.append(response.status_code)
 
