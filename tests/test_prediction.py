@@ -75,11 +75,13 @@ def test_predict_without_api_key():
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid or missing API key"
     
-def test_predict_with_api_key():
+def test_predict_with_api_key(monkeypatch):
+    monkeypatch.setattr("api.main.API_KEY", "test-api-key")
+
     response = client.post(
         "/predict",
         json={},
-        headers={"x-api-key": "my-secret-key-123"}
+        headers={"x-api-key": "test-api-key"}
     )
 
     assert response.status_code != 401
