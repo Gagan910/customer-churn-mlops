@@ -81,9 +81,12 @@ app.add_exception_handler(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    
     start_time = time.time()
     request_id = str(uuid.uuid4())
+    
     response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
 
     duration = time.time() - start_time
 
