@@ -1,12 +1,25 @@
 import logging
+import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from typing import Literal
 from src.predict import predict_churn
 from src.explain import explain_prediction
 
 logger = logging.getLogger(__name__)
+
+API_KEY = os.getenv("API_KEY")
+
+api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
+
+def verify_api_key(x_api_key: str = Depends(api_key_header)):
+    if x_api_key != API_KEY:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key"
+        )
 
 class CustomerData(BaseModel):
     
@@ -51,7 +64,11 @@ def health():
     return {"status": "healthy"}
 
 
-@app.post("/predict", response_model=PredictionResponse)
+@app.post(
+    "/predict",
+    response_model=PredictionResponse,
+    dependencies=[Depends(verify_api_key)]
+)
 def predict(customer_data: CustomerData):
     try:
         result = predict_churn(customer_data.model_dump())
@@ -64,7 +81,10 @@ def predict(customer_data: CustomerData):
         )
         
         
-@app.post("/explain")
+@app.post(
+    "/explain",
+    dependencies=[Depends(verify_api_key)]
+)
 def explain(customer_data: CustomerData):
     try:
         return explain_prediction(customer_data.model_dump())
