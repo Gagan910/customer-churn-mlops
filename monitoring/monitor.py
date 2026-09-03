@@ -24,6 +24,17 @@ print(f"Accuracy:  {accuracy_score(actual, predicted):.2%}")
 print(f"Precision: {precision_score(actual, predicted):.2%}")
 print(f"Recall:    {recall_score(actual, predicted):.2%}")
 print(f"F1 Score:  {f1_score(actual, predicted):.2%}")
+f1 = f1_score(actual, predicted)
+
+F1_THRESHOLD = 0.50
+
+if f1 < F1_THRESHOLD:
+    raise ValueError(
+        f"Model performance alert: F1 score {f1:.2%} "
+        f"is below the threshold of {F1_THRESHOLD:.2%}"
+    )
+
+print(f"F1 threshold check passed: {f1:.2%} >= {F1_THRESHOLD:.2%}")
 
 if len(current_data) < 500:
     raise ValueError(
