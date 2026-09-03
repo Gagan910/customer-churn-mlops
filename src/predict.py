@@ -47,6 +47,7 @@ def predict_churn(customer_data):
     log_data["prediction"] = prediction
 
     log_path = BASE_DIR / "data" / "processed" / "prediction_logs.csv"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
 
     pd.DataFrame([log_data]).to_csv(
         log_path,
