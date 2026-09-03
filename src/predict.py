@@ -2,6 +2,7 @@ import joblib
 import logging
 import os
 import pandas as pd
+from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -39,10 +40,19 @@ def predict_churn(customer_data):
     probability = model.predict_proba(processed_data)[0][1]
 
     prediction = int(probability >= CHURN_THRESHOLD)
-    logger.info(
-        "Churn prediction completed: probability=%.4f, prediction=%d",
-        probability,
-        prediction
+
+    log_data = customer_data.copy()
+    log_data["timestamp"] = datetime.now().isoformat()
+    log_data["churn_probability"] = float(probability)
+    log_data["prediction"] = prediction
+
+    log_path = BASE_DIR / "data" / "processed" / "prediction_logs.csv"
+
+    pd.DataFrame([log_data]).to_csv(
+        log_path,
+        mode="a",
+        header=not log_path.exists(),
+        index=False
     )
 
     return {

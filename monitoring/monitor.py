@@ -1,0 +1,52 @@
+import pandas as pd
+
+from evidently import Report
+from evidently.presets import DataDriftPreset
+
+
+REFERENCE_DATA_PATH = "data/processed/reference_data.csv"
+CURRENT_DATA_PATH = "data/processed/prediction_logs.csv"
+
+
+reference_data = pd.read_csv(REFERENCE_DATA_PATH)
+current_data = pd.read_csv(CURRENT_DATA_PATH)
+
+# Use the latest 500 production predictions as the monitoring window
+current_data = current_data.tail(500)
+
+current_data = current_data.drop(
+    columns=["timestamp", "churn_probability", "prediction"],
+    errors="ignore"
+)
+
+# Remove identifier and target columns from drift monitoring
+columns_to_exclude = ["customerID", "Churn"]
+
+reference_data = reference_data.drop(
+    columns=columns_to_exclude,
+    errors="ignore"
+)
+
+current_data = current_data.drop(
+    columns=columns_to_exclude,
+    errors="ignore"
+)
+
+
+report = Report(
+    [
+        DataDriftPreset()
+    ]
+)
+
+
+result = report.run(
+    reference_data=reference_data,
+    current_data=current_data
+)
+
+
+result.save_html("monitoring/drift_report.html")
+
+print("Data drift report generated successfully.")
+print("Open monitoring/drift_report.html to view the drift results.")

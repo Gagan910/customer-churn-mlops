@@ -6,3 +6,5 @@ __pycache__/
 mlflow.db
 mlruns/
 .env
+data/processed/prediction_logs.csv
+monitoring/drift_report.html
