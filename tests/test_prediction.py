@@ -177,3 +177,5 @@ def test_explain_has_impact(monkeypatch):
         "increases_churn",
         "decreases_churn"
     ]
+    assert "explanation" in explanations[0]
+    assert "churn risk" in explanations[0]["explanation"]

@@ -38,16 +38,24 @@ def explain_prediction(customer_data):
 
         total_shap = sum(shap_values[i] for i in matching_indices)
 
+        impact = (
+            "increases_churn"
+            if total_shap > 0
+            else "decreases_churn"
+        )
+
+        explanation_text = (
+            f"{original_feature} = {customer_data[original_feature]} "
+            f"{'increases' if total_shap > 0 else 'decreases'} churn risk."
+        )
+
         explanations.append(
             {
                 "feature": original_feature,
                 "value": customer_data[original_feature],
                 "shap_value": float(total_shap),
-                "impact": (
-                    "increases_churn"
-                    if total_shap > 0
-                    else "decreases_churn"
-                ),
+                "impact": impact,
+                "explanation": explanation_text,
             }
         )
 
