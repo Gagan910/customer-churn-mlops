@@ -27,6 +27,12 @@ jobs:
           python monitoring/generate_predictions.py
 
       - name: Run drift monitoring
+        env:
+          SMTP_SERVER: smtp.gmail.com
+          SMTP_PORT: 587
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
         run: |
           python monitoring/monitor.py
 
