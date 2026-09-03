@@ -96,6 +96,8 @@ def test_health_is_public():
     response = client.get("/health")
 
     assert response.status_code == 200
+    assert "X-Request-ID" in response.headers
+    assert len(response.headers["X-Request-ID"]) > 0
     assert response.json()["status"] == "healthy"
     
 def test_rate_limit(monkeypatch):
