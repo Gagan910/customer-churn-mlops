@@ -1,4 +1,15 @@
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
 from alerts import send_alert
+from configs.monitoring_config import (
+    F1_THRESHOLD,
+    ROC_AUC_THRESHOLD,
+    DRIFT_SHARE_THRESHOLD,
+)
+
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -39,7 +50,6 @@ print(f"Recall:    {recall_score(actual, predicted):.2%}")
 print(f"F1 Score:  {f1_score(actual, predicted):.2%}")
 f1 = f1_score(actual, predicted)
 
-F1_THRESHOLD = 0.50
 
 if f1 < F1_THRESHOLD:
     send_alert(
@@ -60,8 +70,6 @@ roc_auc = roc_auc_score(
     actual,
     current_data["churn_probability"]
 )
-
-ROC_AUC_THRESHOLD = 0.75
 
 print(f"ROC-AUC:   {roc_auc:.2%}")
 
@@ -141,7 +149,6 @@ if drift_metrics:
     drifted_columns = int(drift_summary["count"])
     drift_share = float(drift_summary["share"])
 
-    DRIFT_SHARE_THRESHOLD = 0.50
 
     print(
         f"Drifted columns: {drifted_columns}"
