@@ -269,3 +269,42 @@ def test_predict_invalid_input(monkeypatch):
     )
 
     assert response.status_code == 422
+    
+
+def test_predict_internal_error(monkeypatch):
+    monkeypatch.setattr("api.main.API_KEY", "error-test-api-key")
+    monkeypatch.setattr(
+        "api.main.predict_churn",
+        lambda customer: (_ for _ in ()).throw(RuntimeError("test failure"))
+    )
+
+    customer = {
+        "gender": "Female",
+        "SeniorCitizen": 0,
+        "Partner": "Yes",
+        "Dependents": "No",
+        "tenure": 5,
+        "PhoneService": "Yes",
+        "MultipleLines": "No",
+        "InternetService": "Fiber optic",
+        "OnlineSecurity": "No",
+        "OnlineBackup": "No",
+        "DeviceProtection": "No",
+        "TechSupport": "No",
+        "StreamingTV": "Yes",
+        "StreamingMovies": "Yes",
+        "Contract": "Month-to-month",
+        "PaperlessBilling": "Yes",
+        "PaymentMethod": "Electronic check",
+        "MonthlyCharges": 85.0,
+        "TotalCharges": 425.0
+    }
+
+    response = client.post(
+        "/predict",
+        json=customer,
+        headers={"x-api-key": "error-test-api-key"}
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Prediction failed. Please try again later."
