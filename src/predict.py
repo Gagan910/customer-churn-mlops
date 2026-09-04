@@ -6,7 +6,6 @@ from pathlib import Path
 
 from src.config import MODEL_SOURCE, CHURN_THRESHOLD
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -33,8 +32,15 @@ def predict_churn(customer_data):
     processed_data = preprocessor.transform(data)
 
     probability = model.predict_proba(processed_data)[0][1]
-
     prediction = int(probability >= CHURN_THRESHOLD)
+    
+    logger.info(
+        "Churn prediction completed | model_source=%s | probability=%.4f | threshold=%.2f | prediction=%d",
+        MODEL_SOURCE,
+        probability,
+        CHURN_THRESHOLD,
+        prediction,
+    )
 
     log_data = customer_data.copy()
     log_data["timestamp"] = datetime.now().isoformat()
