@@ -353,12 +353,47 @@ def test_readiness_when_model_unavailable(monkeypatch):
     assert response.json()["detail"] == "Service not ready"
 
 
-def test_mlflow_production_model_loads():
+def test_mlflow_production_model_loads(tmp_path):
     import mlflow
+    from xgboost import XGBClassifier
 
-    model = mlflow.xgboost.load_model(
-        "models:/customer-churn-model@production"
+    tracking_db = tmp_path / "mlflow.db"
+    mlflow.set_tracking_uri(f"sqlite:///{tracking_db}")
+
+    model_name = "test-customer-churn-model"
+
+    mlflow.set_experiment("test-customer-churn")
+
+    with mlflow.start_run() as run:
+        model = XGBClassifier(
+            n_estimators=2,
+            max_depth=2,
+            random_state=42,
+            eval_metric="logloss",
+        )
+
+        model.fit(
+            [[0], [1], [2], [3]],
+            [0, 0, 1, 1],
+        )
+
+        model_info = mlflow.xgboost.log_model(
+            model,
+            name="xgboost-model",
+            registered_model_name=model_name,
+        )
+
+    client = mlflow.MlflowClient()
+
+    client.set_registered_model_alias(
+        model_name,
+        "production",
+        str(model_info.registered_model_version),
     )
 
-    assert model is not None
-    assert model.__class__.__name__ == "XGBClassifier"
+    loaded_model = mlflow.xgboost.load_model(
+        f"models:/{model_name}@production"
+    )
+
+    assert loaded_model is not None
+    assert loaded_model.__class__.__name__ == "XGBClassifier"
