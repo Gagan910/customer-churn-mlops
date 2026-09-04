@@ -27,6 +27,9 @@ def validate_config():
             "Must be between 0 and 1."
         )
 
+    if not API_KEY:
+        raise ValueError("API_KEY must not be empty.")
+
     if not RATE_LIMIT:
         raise ValueError("RATE_LIMIT must not be empty.")
 
