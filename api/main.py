@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import time
 import uuid
 
@@ -13,10 +12,9 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from typing import Literal
 from src.predict import predict_churn, model, preprocessor
+from src.config import API_KEY, RATE_LIMIT, API_VERSION
 from src.explain import explain_prediction
-from dotenv import load_dotenv
 
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,8 +22,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-
-API_KEY = os.getenv("API_KEY")
 
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
 
@@ -75,7 +71,7 @@ app = FastAPI(
         "Production-ready machine learning API for predicting "
         "customer churn probability and providing SHAP-based explanations."
     ),
-    version="1.0.0",
+    version=API_VERSION,
 )
 
 v1_router = APIRouter(prefix="/v1")
@@ -169,7 +165,7 @@ def readiness():
     }
 )
 
-@limiter.limit("10/minute")
+@limiter.limit(RATE_LIMIT)
 
 def predict(request: Request, customer_data: CustomerData):
     try:
@@ -194,7 +190,7 @@ def predict(request: Request, customer_data: CustomerData):
     summary="Predict customer churn (v1)",
     description="Version 1 of the customer churn prediction endpoint.",
 )
-@limiter.limit("10/minute")
+@limiter.limit(RATE_LIMIT)
 def predict_v1(request: Request, customer_data: CustomerData):
     return predict(request, customer_data)
 
@@ -235,7 +231,7 @@ def predict_v1(request: Request, customer_data: CustomerData):
         }
     }
 )
-@limiter.limit("10/minute")
+@limiter.limit(RATE_LIMIT)
 def explain(request: Request, customer_data: CustomerData):
     try:
         return explain_prediction(customer_data.model_dump())
@@ -255,7 +251,7 @@ def explain(request: Request, customer_data: CustomerData):
     summary="Explain churn prediction (v1)",
     description="Version 1 of the SHAP-based churn explanation endpoint.",
 )
-@limiter.limit("10/minute")
+@limiter.limit(RATE_LIMIT)
 def explain_v1(request: Request, customer_data: CustomerData):
     return explain(request, customer_data)
 
