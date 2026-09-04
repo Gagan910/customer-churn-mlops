@@ -92,6 +92,7 @@ async def log_requests(request: Request, call_next):
 
     start_time = time.time()
     request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
 
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
@@ -172,7 +173,10 @@ def readiness():
 
 def predict(request: Request, customer_data: CustomerData):
     try:
-        result = predict_churn(customer_data.model_dump())
+        result = predict_churn(
+            customer_data.model_dump(),
+            request_id=request.state.request_id
+        )
         return result
     except Exception as e:
         logger.exception("Prediction failed")

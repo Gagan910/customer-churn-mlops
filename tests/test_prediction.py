@@ -100,6 +100,41 @@ def test_health_is_public():
     assert len(response.headers["X-Request-ID"]) > 0
     assert response.json()["status"] == "healthy"
 
+def test_predict_returns_request_id(monkeypatch):
+    monkeypatch.setattr("api.main.API_KEY", "request-id-test-key")
+
+    customer = {
+        "gender": "Female",
+        "SeniorCitizen": 0,
+        "Partner": "Yes",
+        "Dependents": "No",
+        "tenure": 5,
+        "PhoneService": "Yes",
+        "MultipleLines": "No",
+        "InternetService": "Fiber optic",
+        "OnlineSecurity": "No",
+        "OnlineBackup": "No",
+        "DeviceProtection": "No",
+        "TechSupport": "No",
+        "StreamingTV": "Yes",
+        "StreamingMovies": "Yes",
+        "Contract": "Month-to-month",
+        "PaperlessBilling": "Yes",
+        "PaymentMethod": "Electronic check",
+        "MonthlyCharges": 85.0,
+        "TotalCharges": 425.0
+    }
+
+    response = client.post(
+        "/predict",
+        json=customer,
+        headers={"x-api-key": "request-id-test-key"}
+    )
+
+    assert response.status_code == 200
+    assert "X-Request-ID" in response.headers
+    assert len(response.headers["X-Request-ID"]) > 0
+
 def test_rate_limit(monkeypatch):
     monkeypatch.setattr("api.main.API_KEY", "test-api-key")
 

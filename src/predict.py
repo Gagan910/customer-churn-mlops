@@ -25,9 +25,12 @@ else:
 preprocessor = joblib.load(PREPROCESSOR_PATH)
 
 
-def predict_churn(customer_data):
+def predict_churn(customer_data, request_id=None):
     data = pd.DataFrame([customer_data])
-    logger.info("Churn prediction request received")
+    logger.info(
+        "Churn prediction request received | request_id=%s",
+        request_id,
+    )
 
     processed_data = preprocessor.transform(data)
 
@@ -35,7 +38,8 @@ def predict_churn(customer_data):
     prediction = int(probability >= CHURN_THRESHOLD)
     
     logger.info(
-        "Churn prediction completed | model_source=%s | probability=%.4f | threshold=%.2f | prediction=%d",
+        "Churn prediction completed | request_id=%s | model_source=%s | probability=%.4f | threshold=%.2f | prediction=%d",
+        request_id,
         MODEL_SOURCE,
         probability,
         CHURN_THRESHOLD,
