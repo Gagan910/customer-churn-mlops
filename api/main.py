@@ -37,7 +37,7 @@ def verify_api_key(x_api_key: str = Depends(api_key_header)):
         )
 
 class CustomerData(BaseModel):
-    
+
     gender: Literal["Female", "Male"]
     SeniorCitizen: int = Field(ge=0, le=1)
     Partner: Literal["Yes", "No"]
@@ -89,10 +89,10 @@ app.add_exception_handler(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    
+
     start_time = time.time()
     request_id = str(uuid.uuid4())
-    
+
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
 
@@ -120,6 +120,21 @@ def health():
         "status": "healthy",
         "model_loaded": model is not None,
         "preprocessor_loaded": preprocessor is not None
+    }
+
+
+@app.get("/ready")
+def readiness():
+    if model is None or preprocessor is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Service not ready"
+        )
+
+    return {
+        "status": "ready",
+        "model_loaded": True,
+        "preprocessor_loaded": True
     }
 
 
@@ -176,8 +191,8 @@ def predict(request: Request, customer_data: CustomerData):
 def predict_v1(request: Request, customer_data: CustomerData):
     return predict(request, customer_data)
 
-    
-        
+
+
 @app.post(
     "/explain",
     dependencies=[Depends(verify_api_key)],

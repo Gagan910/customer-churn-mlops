@@ -68,13 +68,13 @@ def test_explanation():
         assert "feature" in explanation
         assert "value" in explanation
         assert "shap_value" in explanation
-        
+
 def test_predict_without_api_key():
     response = client.post("/predict", json={})
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid or missing API key"
-    
+
 def test_predict_with_api_key(monkeypatch):
     monkeypatch.setattr("api.main.API_KEY", "test-api-key")
 
@@ -85,13 +85,13 @@ def test_predict_with_api_key(monkeypatch):
     )
 
     assert response.status_code != 401
-    
+
 def test_explain_without_api_key():
     response = client.post("/explain", json={})
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid or missing API key"
-    
+
 def test_health_is_public():
     response = client.get("/health")
 
@@ -99,10 +99,10 @@ def test_health_is_public():
     assert "X-Request-ID" in response.headers
     assert len(response.headers["X-Request-ID"]) > 0
     assert response.json()["status"] == "healthy"
-    
+
 def test_rate_limit(monkeypatch):
     monkeypatch.setattr("api.main.API_KEY", "test-api-key")
-    
+
     customer = {
         "gender": "Female",
         "SeniorCitizen": 0,
@@ -124,7 +124,7 @@ def test_rate_limit(monkeypatch):
         "MonthlyCharges": 85.0,
         "TotalCharges": 425.0
     }
-    
+
     responses = []
 
     for _ in range(11):
@@ -136,8 +136,8 @@ def test_rate_limit(monkeypatch):
         responses.append(response.status_code)
 
     assert 429 in responses
-    
-    
+
+
 def test_explain_has_impact(monkeypatch):
     monkeypatch.setattr("api.main.API_KEY", "test-api-key")
 
@@ -181,7 +181,7 @@ def test_explain_has_impact(monkeypatch):
     ]
     assert "explanation" in explanations[0]
     assert "churn risk" in explanations[0]["explanation"]
-    
+
 def test_v1_predict_with_api_key(monkeypatch):
     monkeypatch.setattr("api.main.API_KEY", "test-api-key")
 
@@ -216,7 +216,7 @@ def test_v1_predict_with_api_key(monkeypatch):
     assert response.status_code == 200
     assert "churn_probability" in response.json()
     assert "prediction" in response.json()
-    
+
 def test_v1_explain_with_api_key(monkeypatch):
     monkeypatch.setattr("api.main.API_KEY", "test-api-key")
 
@@ -256,7 +256,7 @@ def test_v1_explain_with_api_key(monkeypatch):
     assert "feature" in explanations[0]
     assert "impact" in explanations[0]
     assert "explanation" in explanations[0]
-    
+
 def test_predict_invalid_input(monkeypatch):
     monkeypatch.setattr("api.main.API_KEY", "test-api-key")
 
@@ -269,7 +269,7 @@ def test_predict_invalid_input(monkeypatch):
     )
 
     assert response.status_code == 422
-    
+
 
 def test_predict_internal_error(monkeypatch):
     monkeypatch.setattr("api.main.API_KEY", "error-test-api-key")
@@ -308,3 +308,11 @@ def test_predict_internal_error(monkeypatch):
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Prediction failed. Please try again later."
+
+def test_readiness_when_model_unavailable(monkeypatch):
+    monkeypatch.setattr("api.main.model", None)
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service not ready"
