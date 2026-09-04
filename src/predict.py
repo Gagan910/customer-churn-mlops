@@ -1,17 +1,14 @@
 import joblib
 import logging
-import os
 import pandas as pd
 from datetime import datetime
-from dotenv import load_dotenv
 from pathlib import Path
+
+from src.config import MODEL_SOURCE, CHURN_THRESHOLD
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-
-MODEL_SOURCE = os.getenv("MODEL_SOURCE", "local")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -27,8 +24,6 @@ else:
     model = joblib.load(MODEL_PATH)
 
 preprocessor = joblib.load(PREPROCESSOR_PATH)
-
-CHURN_THRESHOLD = 0.35
 
 
 def predict_churn(customer_data):
