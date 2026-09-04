@@ -178,8 +178,11 @@ def predict(request: Request, customer_data: CustomerData):
             request_id=request.state.request_id
         )
         return result
-    except Exception as e:
-        logger.exception("Prediction failed")
+    except Exception:
+        logger.exception(
+            "Prediction failed | request_id=%s",
+            request.state.request_id,
+        )
     raise HTTPException(
         status_code=500,
         detail="Prediction failed. Please try again later."
@@ -236,11 +239,14 @@ def predict_v1(request: Request, customer_data: CustomerData):
 def explain(request: Request, customer_data: CustomerData):
     try:
         return explain_prediction(customer_data.model_dump())
-    except Exception as e:
-        logger.exception("SHAP explanation failed")
+    except Exception:
+        logger.exception(
+            "SHAP explanation failed | request_id=%s",
+            request.state.request_id,
+        )
         raise HTTPException(
             status_code=500,
-            detail=f"SHAP explanation failed: {str(e)}"
+            detail="SHAP explanation failed. Please try again later."
         )
 
 @v1_router.post(
