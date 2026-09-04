@@ -1,16 +1,7 @@
-import joblib
 import pandas as pd
 import shap
-from pathlib import Path
 
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-MODEL_PATH = BASE_DIR / "models" / "churn_model.pkl"
-PREPROCESSOR_PATH = BASE_DIR / "models" / "preprocessor.pkl"
-
-model = joblib.load(MODEL_PATH)
-preprocessor = joblib.load(PREPROCESSOR_PATH)
+from src.predict import model, preprocessor
 
 
 def explain_prediction(customer_data):
