@@ -351,3 +351,14 @@ def test_readiness_when_model_unavailable(monkeypatch):
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Service not ready"
+
+
+def test_mlflow_production_model_loads():
+    import mlflow
+
+    model = mlflow.xgboost.load_model(
+        "models:/customer-churn-model@production"
+    )
+
+    assert model is not None
+    assert model.__class__.__name__ == "XGBClassifier"

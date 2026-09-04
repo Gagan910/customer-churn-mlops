@@ -16,13 +16,26 @@ PREPROCESSOR_PATH = BASE_DIR / "models" / "preprocessor.pkl"
 
 if MODEL_SOURCE == "mlflow":
     import mlflow
+
     model = mlflow.xgboost.load_model(
         "models:/customer-churn-model@production"
     )
+
+    production_model = mlflow.MlflowClient().get_model_version_by_alias(
+        "customer-churn-model",
+        "production",
+    )
+
+    preprocessor_path = mlflow.artifacts.download_artifacts(
+        run_id=production_model.run_id,
+        artifact_path="model/preprocessor.pkl",
+    )
+
+    preprocessor = joblib.load(preprocessor_path)
+
 else:
     model = joblib.load(MODEL_PATH)
-
-preprocessor = joblib.load(PREPROCESSOR_PATH)
+    preprocessor = joblib.load(PREPROCESSOR_PATH)
 
 
 def predict_churn(customer_data, request_id=None):

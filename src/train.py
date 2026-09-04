@@ -93,7 +93,23 @@ X_test_processed = preprocessor.transform(X_test)
 # --------------------------------------------------
 
 mlflow.set_experiment("customer-churn-prediction")
+def promote_model_to_production(model_name, model_version):
 
+    client = mlflow.MlflowClient()
+
+    client.set_registered_model_alias(
+        model_name,
+        "production",
+        str(model_version),
+    )
+
+    print(
+        f"Model {model_name} version {model_version} "
+        "promoted to production."
+    )
+
+def passes_production_quality_gate(roc_auc, minimum_roc_auc=0.80):
+    return roc_auc >= minimum_roc_auc
 
 # --------------------------------------------------
 # XGBoost + Hyperparameter Tuning
@@ -137,6 +153,12 @@ with mlflow.start_run(run_name="tuned_xgboost"):
     f1 = f1_score(y_test, y_pred)
     roc_auc = roc_auc_score(y_test, y_probability)
 
+    if not passes_production_quality_gate(roc_auc):
+        raise ValueError(
+            f"Model failed production quality gate: "
+            f"ROC-AUC={roc_auc:.4f}, required>=0.80"
+        )
+
     # Log parameters
     mlflow.log_params(grid_search.best_params_)
     mlflow.log_param("churn_threshold", CHURN_THRESHOLD)
@@ -155,11 +177,18 @@ with mlflow.start_run(run_name="tuned_xgboost"):
     # Log artifacts
     mlflow.log_artifact(str(MODEL_PATH), artifact_path="model")
     mlflow.log_artifact(str(PREPROCESSOR_PATH), artifact_path="model")
+
+    model_info = mlflow.xgboost.log_model(
+        best_model,
+        name="xgboost-model",
+        registered_model_name="customer-churn-model"
+    )
+
+    registered_version = model_info.registered_model_version
     
-    mlflow.xgboost.log_model(
-    best_model,
-    name="xgboost-model",
-    registered_model_name="customer-churn-model"
+    promote_model_to_production(
+        "customer-churn-model",
+        registered_version,
     )
 
     print("Training completed successfully.")
