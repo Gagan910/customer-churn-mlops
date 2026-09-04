@@ -23,6 +23,12 @@ current_data = pd.read_csv(CURRENT_DATA_PATH)
 
 current_data = current_data.tail(500)
 
+if len(current_data) < 500:
+    raise ValueError(
+        f"Not enough prediction data for monitoring. "
+        f"Expected 500 rows, found {len(current_data)}."
+    )
+
 actual = current_data["Churn"].map({"No": 0, "Yes": 1})
 predicted = current_data["prediction"]
 
@@ -75,12 +81,6 @@ print(
     f"{roc_auc:.2%} >= {ROC_AUC_THRESHOLD:.2%}"
 )
 
-if len(current_data) < 500:
-    raise ValueError(
-        f"Not enough prediction data for monitoring. "
-        f"Expected 500 rows, found {len(current_data)}."
-    )
-
 
 # Prediction monitoring summary
 print(f"Monitoring window: {len(current_data)} predictions")
@@ -124,6 +124,51 @@ result = report.run(
     reference_data=reference_data,
     current_data=current_data
 )
+
+
+# Check for data drift
+result_data = result.dict()
+
+drift_metrics = [
+    metric
+    for metric in result_data["metrics"]
+    if metric["metric_name"].startswith("DriftedColumnsCount")
+]
+
+if drift_metrics:
+    drift_summary = drift_metrics[0]["value"]
+
+    drifted_columns = int(drift_summary["count"])
+    drift_share = float(drift_summary["share"])
+
+    DRIFT_SHARE_THRESHOLD = 0.50
+
+    print(
+        f"Drifted columns: {drifted_columns}"
+    )
+    print(
+        f"Drift share: {drift_share:.2%}"
+    )
+
+    if drift_share >= DRIFT_SHARE_THRESHOLD:
+        send_alert(
+            "Customer Churn Data Drift Alert",
+            f"Data drift detected across "
+            f"{drifted_columns} columns "
+            f"({drift_share:.2%} of monitored columns)."
+        )
+
+        raise ValueError(
+            f"Data drift threshold exceeded: "
+            f"{drift_share:.2%} >= "
+            f"{DRIFT_SHARE_THRESHOLD:.2%}"
+        )
+
+    print(
+        f"Data drift threshold check passed: "
+        f"{drift_share:.2%} < "
+        f"{DRIFT_SHARE_THRESHOLD:.2%}"
+    )
 
 
 result.save_html("monitoring/drift_report.html")
