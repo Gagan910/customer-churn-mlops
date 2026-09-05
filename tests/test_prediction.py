@@ -397,3 +397,34 @@ def test_mlflow_production_model_loads(tmp_path):
 
     assert loaded_model is not None
     assert loaded_model.__class__.__name__ == "XGBClassifier"
+
+def test_admin_reload_model_with_valid_key(monkeypatch):
+    monkeypatch.setattr("api.main.ADMIN_API_KEY", "test-admin-api-key")
+    monkeypatch.setattr("api.main.reload_model", lambda: True)
+
+    response = client.post(
+        "/admin/reload-model",
+        headers={"x-admin-api-key": "test-admin-api-key"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert response.json()["message"] == "Model reloaded successfully"
+    
+def test_admin_reload_model_without_key():
+    response = client.post("/admin/reload-model")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or missing admin API key"
+    
+def test_admin_reload_model_failure(monkeypatch):
+    monkeypatch.setattr("api.main.ADMIN_API_KEY", "test-admin-api-key")
+    monkeypatch.setattr("api.main.reload_model", lambda: False)
+
+    response = client.post(
+        "/admin/reload-model",
+        headers={"x-admin-api-key": "test-admin-api-key"}
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Model reload failed"

@@ -14,7 +14,7 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from typing import Literal
 from src.predict import predict_churn, model, preprocessor, reload_model
-from src.config import API_KEY, RATE_LIMIT, API_VERSION
+from src.config import API_KEY, ADMIN_API_KEY, RATE_LIMIT, API_VERSION
 from src.explain import explain_prediction
 
 
@@ -27,11 +27,27 @@ logger = logging.getLogger(__name__)
 
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
 
+admin_api_key_header = APIKeyHeader(
+    name="x-admin-api-key",
+    auto_error=False,
+)
+
+
 def verify_api_key(x_api_key: str = Depends(api_key_header)):
     if not API_KEY or x_api_key != API_KEY:
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing API key"
+        )
+
+
+def verify_admin_api_key(
+    x_admin_api_key: str = Depends(admin_api_key_header),
+):
+    if not ADMIN_API_KEY or x_admin_api_key != ADMIN_API_KEY:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing admin API key"
         )
 
 class CustomerData(BaseModel):
@@ -178,9 +194,7 @@ def readiness():
         }
     }
 )
-
 @limiter.limit(RATE_LIMIT)
-
 def predict(request: Request, customer_data: CustomerData):
     try:
         result = predict_churn(
@@ -193,10 +207,30 @@ def predict(request: Request, customer_data: CustomerData):
             "Prediction failed | request_id=%s",
             request.state.request_id,
         )
-    raise HTTPException(
-        status_code=500,
-        detail="Prediction failed. Please try again later."
-    )
+        raise HTTPException(
+            status_code=500,
+            detail="Prediction failed. Please try again later."
+        )
+
+
+@app.post(
+    "/admin/reload-model",
+    dependencies=[Depends(verify_admin_api_key)],
+)
+def reload_model_endpoint():
+    success = reload_model()
+
+    if not success:
+        raise HTTPException(
+            status_code=503,
+            detail="Model reload failed"
+        )
+
+    return {
+        "status": "success",
+        "message": "Model reloaded successfully"
+    }
+    
 @v1_router.post(
     "/predict",
     response_model=PredictionResponse,
@@ -207,7 +241,6 @@ def predict(request: Request, customer_data: CustomerData):
 @limiter.limit(RATE_LIMIT)
 def predict_v1(request: Request, customer_data: CustomerData):
     return predict(request, customer_data)
-
 
 
 @app.post(
@@ -259,6 +292,7 @@ def explain(request: Request, customer_data: CustomerData):
             detail="SHAP explanation failed. Please try again later."
         )
 
+
 @v1_router.post(
     "/explain",
     dependencies=[Depends(verify_api_key)],
@@ -268,5 +302,6 @@ def explain(request: Request, customer_data: CustomerData):
 @limiter.limit(RATE_LIMIT)
 def explain_v1(request: Request, customer_data: CustomerData):
     return explain(request, customer_data)
+
 
 app.include_router(v1_router)
