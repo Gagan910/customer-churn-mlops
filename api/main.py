@@ -3,6 +3,8 @@ import logging
 import time
 import uuid
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Header, Depends, Request, APIRouter
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
@@ -11,7 +13,7 @@ from slowapi.util import get_remote_address
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from typing import Literal
-from src.predict import predict_churn, model, preprocessor
+from src.predict import predict_churn, model, preprocessor, reload_model
 from src.config import API_KEY, RATE_LIMIT, API_VERSION
 from src.explain import explain_prediction
 
@@ -65,7 +67,19 @@ class PredictionResponse(BaseModel):
 
 limiter = Limiter(key_func=lambda request: request.headers.get("x-api-key", "anonymous"))
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Application startup: attempting model load")
+
+    if reload_model():
+        logger.info("Application startup: model loaded successfully")
+    else:
+        logger.error("Application startup: model unavailable")
+
+    yield
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Customer Churn Prediction API",
     description=(
         "Production-ready machine learning API for predicting "

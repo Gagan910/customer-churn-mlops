@@ -14,32 +14,69 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = BASE_DIR / "models" / "churn_model.pkl"
 PREPROCESSOR_PATH = BASE_DIR / "models" / "preprocessor.pkl"
 
-if MODEL_SOURCE == "mlflow":
-    import mlflow
+def load_model():
+    try:
+        if MODEL_SOURCE == "mlflow":
+            import mlflow
 
-    model = mlflow.xgboost.load_model(
-        "models:/customer-churn-model@production"
-    )
+            loaded_model = mlflow.xgboost.load_model(
+                "models:/customer-churn-model@production"
+            )
 
-    production_model = mlflow.MlflowClient().get_model_version_by_alias(
-        "customer-churn-model",
-        "production",
-    )
+            production_model = (
+                mlflow.MlflowClient().get_model_version_by_alias(
+                    "customer-churn-model",
+                    "production",
+                )
+            )
 
-    preprocessor_path = mlflow.artifacts.download_artifacts(
-        run_id=production_model.run_id,
-        artifact_path="model/preprocessor.pkl",
-    )
+            preprocessor_path = mlflow.artifacts.download_artifacts(
+                run_id=production_model.run_id,
+                artifact_path="model/preprocessor.pkl",
+            )
 
-    preprocessor = joblib.load(preprocessor_path)
+            loaded_preprocessor = joblib.load(preprocessor_path)
 
-else:
-    model = joblib.load(MODEL_PATH)
-    preprocessor = joblib.load(PREPROCESSOR_PATH)
+        else:
+            loaded_model = joblib.load(MODEL_PATH)
+            loaded_preprocessor = joblib.load(PREPROCESSOR_PATH)
+
+        logger.info(
+            "Model and preprocessor loaded successfully | model_source=%s",
+            MODEL_SOURCE,
+        )
+
+        return loaded_model, loaded_preprocessor
+
+    except Exception:
+        logger.exception(
+            "Failed to load model and preprocessor | model_source=%s",
+            MODEL_SOURCE,
+        )
+
+        return None, None
+
+
+model, preprocessor = load_model()
+
+def reload_model():
+    global model, preprocessor
+
+    model, preprocessor = load_model()
+
+    return model is not None and preprocessor is not None
 
 
 def predict_churn(customer_data, request_id=None):
+    if model is None or preprocessor is None:
+        logger.error(
+            "Prediction unavailable because model or preprocessor is not loaded | request_id=%s",
+            request_id,
+        )
+        raise RuntimeError("Model is not available.")
+
     data = pd.DataFrame([customer_data])
+    
     logger.info(
         "Churn prediction request received | request_id=%s",
         request_id,
