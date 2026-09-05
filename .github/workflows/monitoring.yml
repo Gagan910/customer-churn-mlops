@@ -43,7 +43,6 @@ jobs:
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
         run: |
           python monitoring/monitor.py
-          echo "retrain_required=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload drift report
         if: always()
