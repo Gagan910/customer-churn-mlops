@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -81,7 +82,7 @@ def check_model_performance(metrics):
             f"below the threshold of {F1_THRESHOLD:.2%}."
         )
 
-        raise ValueError(
+        print(
             f"Model performance alert: F1 score {f1:.2%} "
             f"is below the threshold of {F1_THRESHOLD:.2%}"
         )
@@ -93,7 +94,7 @@ def check_model_performance(metrics):
             f"below the threshold of {ROC_AUC_THRESHOLD:.2%}."
         )
 
-        raise ValueError(
+        print(
             f"Model performance alert: ROC-AUC {roc_auc:.2%} "
             f"is below the threshold of {ROC_AUC_THRESHOLD:.2%}"
         )
@@ -168,10 +169,35 @@ def check_data_drift(drift_summary):
             f"({drift_share:.2%} of monitored columns)."
         )
 
-        raise ValueError(
+        print(
             f"Data drift threshold exceeded: "
             f"{drift_share:.2%} >= "
             f"{DRIFT_SHARE_THRESHOLD:.2%}"
+        )
+
+
+def should_retrain(metrics, drift_summary):
+    return (
+        metrics["f1"] < F1_THRESHOLD
+        or metrics["roc_auc"] < ROC_AUC_THRESHOLD
+        or drift_summary["drift_share"] >= DRIFT_SHARE_THRESHOLD
+    )
+
+
+def write_retraining_output(retrain_required):
+    github_output = os.getenv("GITHUB_OUTPUT")
+
+    if not github_output:
+        return
+
+    with open(
+        github_output,
+        "a",
+        encoding="utf-8",
+    ) as output_file:
+        output_file.write(
+            f"retrain_required="
+            f"{'true' if retrain_required else 'false'}\n"
         )
 
 
@@ -190,12 +216,12 @@ def main():
     check_model_performance(metrics)
 
     print(
-        f"F1 threshold check passed: "
+        f"F1 threshold check: "
         f"{metrics['f1']:.2%} >= {F1_THRESHOLD:.2%}"
     )
 
     print(
-        f"ROC-AUC threshold check passed: "
+        f"ROC-AUC threshold check: "
         f"{metrics['roc_auc']:.2%} >= {ROC_AUC_THRESHOLD:.2%}"
     )
 
@@ -231,10 +257,22 @@ def main():
     check_data_drift(drift_summary)
 
     print(
-        f"Data drift threshold check passed: "
+        f"Data drift threshold check: "
         f"{drift_summary['drift_share']:.2%} < "
         f"{DRIFT_SHARE_THRESHOLD:.2%}"
     )
+
+    retrain_required = should_retrain(
+        metrics,
+        drift_summary,
+    )
+
+    if retrain_required:
+        print("RETRAIN_REQUIRED")
+    else:
+        print("RETRAIN_NOT_REQUIRED")
+
+    write_retraining_output(retrain_required)
 
     drift_summary["result"].save_html(
         "monitoring/drift_report.html"

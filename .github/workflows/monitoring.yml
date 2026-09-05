@@ -9,6 +9,9 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
 
+    outputs:
+      retrain_required: ${{ steps.monitoring.outputs.retrain_required }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,6 +31,7 @@ jobs:
           python monitoring/generate_predictions.py
 
       - name: Run drift monitoring
+        id: monitoring
         env:
           SMTP_SERVER: smtp.gmail.com
           SMTP_PORT: 587
@@ -43,3 +47,29 @@ jobs:
         with:
           name: drift-report
           path: monitoring/drift_report.html
+
+  retrain:
+    needs: monitor
+    if: needs.monitor.outputs.retrain_required == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Retrain model
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+        run: |
+          python -m src.train

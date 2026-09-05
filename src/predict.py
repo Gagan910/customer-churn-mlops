@@ -96,7 +96,37 @@ def predict_churn(customer_data, request_id=None):
         prediction,
     )
 
-    log_data = customer_data.copy()
+    log_columns = [
+        "gender",
+        "SeniorCitizen",
+        "Partner",
+        "Dependents",
+        "tenure",
+        "PhoneService",
+        "MultipleLines",
+        "InternetService",
+        "OnlineSecurity",
+        "OnlineBackup",
+        "DeviceProtection",
+        "TechSupport",
+        "StreamingTV",
+        "StreamingMovies",
+        "Contract",
+        "PaperlessBilling",
+        "PaymentMethod",
+        "MonthlyCharges",
+        "TotalCharges",
+        "Churn",
+        "timestamp",
+        "churn_probability",
+        "prediction",
+    ]
+
+    log_data = {
+        column: customer_data.get(column)
+        for column in log_columns
+    }
+
     log_data["timestamp"] = datetime.now().isoformat()
     log_data["churn_probability"] = float(probability)
     log_data["prediction"] = prediction
@@ -104,11 +134,11 @@ def predict_churn(customer_data, request_id=None):
     log_path = BASE_DIR / "data" / "processed" / "prediction_logs.csv"
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    pd.DataFrame([log_data]).to_csv(
+    pd.DataFrame([log_data], columns=log_columns).to_csv(
         log_path,
         mode="a",
         header=not log_path.exists(),
-        index=False
+        index=False,
     )
 
     return {
