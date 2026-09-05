@@ -16,7 +16,7 @@ from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from xgboost import XGBClassifier
 
-from src.config import CHURN_THRESHOLD
+from src.config import CHURN_THRESHOLD, MLFLOW_TRACKING_URI
 
 
 # --------------------------------------------------
@@ -124,6 +124,7 @@ def train_model():
     # MLflow experiment
     # --------------------------------------------------
 
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment("customer-churn-prediction")
 
     with mlflow.start_run(run_name="tuned_xgboost"):

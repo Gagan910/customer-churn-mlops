@@ -14,6 +14,10 @@ ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 
 RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
 API_VERSION = os.getenv("API_VERSION", "1.0.0")
+MLFLOW_TRACKING_URI = os.getenv(
+    "MLFLOW_TRACKING_URI",
+    "sqlite:///C:/MLProjects/customer-churn-mlops/mlflow.db",
+)
 
 
 def validate_config():
