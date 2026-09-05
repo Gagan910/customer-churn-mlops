@@ -10,6 +10,8 @@ MODEL_SOURCE = os.getenv("MODEL_SOURCE", "local")
 CHURN_THRESHOLD = float(os.getenv("CHURN_THRESHOLD", "0.35"))
 
 API_KEY = os.getenv("API_KEY")
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
+
 RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
 API_VERSION = os.getenv("API_VERSION", "1.0.0")
 
@@ -29,6 +31,9 @@ def validate_config():
 
     if not API_KEY:
         raise ValueError("API_KEY must not be empty.")
+    
+    if not ADMIN_API_KEY:
+        raise ValueError("ADMIN_API_KEY must not be empty.")
 
     if not RATE_LIMIT:
         raise ValueError("RATE_LIMIT must not be empty.")
