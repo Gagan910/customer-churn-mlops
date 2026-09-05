@@ -7,7 +7,7 @@ load_dotenv()
 
 
 MODEL_SOURCE = os.getenv("MODEL_SOURCE", "local")
-CHURN_THRESHOLD = float(os.getenv("CHURN_THRESHOLD", "0.35"))
+CHURN_THRESHOLD_RAW = os.getenv("CHURN_THRESHOLD", "0.35")
 
 API_KEY = os.getenv("API_KEY")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
@@ -23,15 +23,23 @@ def validate_config():
             "Must be 'local' or 'mlflow'."
         )
 
-    if not 0 <= CHURN_THRESHOLD <= 1:
+    try:
+        churn_threshold = float(CHURN_THRESHOLD_RAW)
+    except ValueError:
         raise ValueError(
-            f"Invalid CHURN_THRESHOLD: {CHURN_THRESHOLD}. "
+            f"Invalid CHURN_THRESHOLD: '{CHURN_THRESHOLD_RAW}'. "
+            "Must be a number between 0 and 1."
+        )
+
+    if not 0 <= churn_threshold <= 1:
+        raise ValueError(
+            f"Invalid CHURN_THRESHOLD: {churn_threshold}. "
             "Must be between 0 and 1."
         )
 
     if not API_KEY:
         raise ValueError("API_KEY must not be empty.")
-    
+
     if not ADMIN_API_KEY:
         raise ValueError("ADMIN_API_KEY must not be empty.")
 
@@ -43,3 +51,5 @@ def validate_config():
 
 
 validate_config()
+
+CHURN_THRESHOLD = float(CHURN_THRESHOLD_RAW)
