@@ -27,6 +27,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Generate production predictions
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
         run: |
           python monitoring/generate_predictions.py
 
