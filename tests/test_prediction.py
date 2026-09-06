@@ -99,6 +99,14 @@ def test_health_is_public():
     assert "X-Request-ID" in response.headers
     assert len(response.headers["X-Request-ID"]) > 0
     assert response.json()["status"] == "healthy"
+    
+def test_health_reports_model_version(monkeypatch):
+    monkeypatch.setattr("api.main.model_version", "7")
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["model_version"] == "7"
 
 def test_predict_returns_request_id(monkeypatch):
     monkeypatch.setattr("api.main.API_KEY", "request-id-test-key")

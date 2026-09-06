@@ -14,8 +14,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = BASE_DIR / "models" / "churn_model.pkl"
 PREPROCESSOR_PATH = BASE_DIR / "models" / "preprocessor.pkl"
 
+model_version = None
+
+
 def load_model():
     try:
+        loaded_model_version = "local"
+
         if MODEL_SOURCE == "mlflow":
             import mlflow
 
@@ -30,6 +35,8 @@ def load_model():
                 )
             )
 
+            loaded_model_version = str(production_model.version)
+
             preprocessor_path = mlflow.artifacts.download_artifacts(
                 run_id=production_model.run_id,
                 artifact_path="model/preprocessor.pkl",
@@ -42,11 +49,17 @@ def load_model():
             loaded_preprocessor = joblib.load(PREPROCESSOR_PATH)
 
         logger.info(
-            "Model and preprocessor loaded successfully | model_source=%s",
+            "Model and preprocessor loaded successfully | "
+            "model_source=%s | model_version=%s",
             MODEL_SOURCE,
+            loaded_model_version,
         )
 
-        return loaded_model, loaded_preprocessor
+        return (
+            loaded_model,
+            loaded_preprocessor,
+            loaded_model_version,
+        )
 
     except Exception:
         logger.exception(
@@ -54,15 +67,16 @@ def load_model():
             MODEL_SOURCE,
         )
 
-        return None, None
+        return None, None, None
 
 
-model, preprocessor = load_model()
+model, preprocessor, model_version = load_model()
+
 
 def reload_model():
-    global model, preprocessor
+    global model, preprocessor, model_version
 
-    model, preprocessor = load_model()
+    model, preprocessor, model_version = load_model()
 
     return model is not None and preprocessor is not None
 
@@ -70,13 +84,14 @@ def reload_model():
 def predict_churn(customer_data, request_id=None):
     if model is None or preprocessor is None:
         logger.error(
-            "Prediction unavailable because model or preprocessor is not loaded | request_id=%s",
+            "Prediction unavailable because model or preprocessor is not loaded | "
+            "request_id=%s",
             request_id,
         )
         raise RuntimeError("Model is not available.")
 
     data = pd.DataFrame([customer_data])
-    
+
     logger.info(
         "Churn prediction request received | request_id=%s",
         request_id,
@@ -86,11 +101,14 @@ def predict_churn(customer_data, request_id=None):
 
     probability = model.predict_proba(processed_data)[0][1]
     prediction = int(probability >= CHURN_THRESHOLD)
-    
+
     logger.info(
-        "Churn prediction completed | request_id=%s | model_source=%s | probability=%.4f | threshold=%.2f | prediction=%d",
+        "Churn prediction completed | request_id=%s | "
+        "model_source=%s | model_version=%s | "
+        "probability=%.4f | threshold=%.2f | prediction=%d",
         request_id,
         MODEL_SOURCE,
+        model_version,
         probability,
         CHURN_THRESHOLD,
         prediction,
@@ -143,5 +161,5 @@ def predict_churn(customer_data, request_id=None):
 
     return {
         "churn_probability": float(probability),
-        "prediction": prediction
+        "prediction": prediction,
     }
