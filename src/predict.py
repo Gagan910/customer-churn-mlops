@@ -138,6 +138,7 @@ def predict_churn(customer_data, request_id=None):
         "timestamp",
         "churn_probability",
         "prediction",
+        "model_version",
     ]
 
     log_data = {
@@ -148,6 +149,7 @@ def predict_churn(customer_data, request_id=None):
     log_data["timestamp"] = datetime.now().isoformat()
     log_data["churn_probability"] = float(probability)
     log_data["prediction"] = prediction
+    log_data["model_version"] = model_version
 
     log_path = BASE_DIR / "data" / "processed" / "prediction_logs.csv"
     log_path.parent.mkdir(parents=True, exist_ok=True)

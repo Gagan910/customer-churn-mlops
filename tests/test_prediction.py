@@ -35,6 +35,14 @@ def test_prediction():
     assert 0 <= result["churn_probability"] <= 1
     assert result["prediction"] in [0, 1]
 
+def test_prediction_log_contains_model_version():
+    import pandas as pd
+
+    log_path = "data/processed/prediction_logs.csv"
+
+    logs = pd.read_csv(log_path)
+
+    assert "model_version" in logs.columns
 
 def test_explanation():
     customer = {

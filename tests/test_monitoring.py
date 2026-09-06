@@ -7,6 +7,7 @@ from monitoring.monitor import (
     check_data_drift,
     should_retrain,
     write_retraining_output,
+    prepare_drift_data,
 )
 
 
@@ -83,6 +84,45 @@ def test_calculate_model_metrics():
     assert metrics["precision"] == 1.0
     assert metrics["recall"] == 0.5
     assert metrics["f1"] == pytest.approx(0.6666666667)
+
+
+def test_prepare_drift_data_excludes_metadata():
+    reference_data = pd.DataFrame(
+        {
+            "customerID": ["1", "2"],
+            "gender": ["Male", "Female"],
+            "tenure": [10, 20],
+            "Churn": ["No", "Yes"],
+        }
+    )
+
+    current_data = pd.DataFrame(
+        {
+            "customerID": ["3", "4"],
+            "gender": ["Male", "Female"],
+            "tenure": [15, 25],
+            "Churn": ["No", "Yes"],
+            "timestamp": ["2026-09-06", "2026-09-06"],
+            "churn_probability": [0.20, 0.80],
+            "prediction": [0, 1],
+            "model_version": ["local", "local"],
+        }
+    )
+
+    reference_drift_data, current_drift_data = prepare_drift_data(
+        reference_data,
+        current_data,
+    )
+
+    assert "customerID" not in reference_drift_data.columns
+    assert "Churn" not in reference_drift_data.columns
+
+    assert "customerID" not in current_drift_data.columns
+    assert "Churn" not in current_drift_data.columns
+    assert "timestamp" not in current_drift_data.columns
+    assert "churn_probability" not in current_drift_data.columns
+    assert "prediction" not in current_drift_data.columns
+    assert "model_version" not in current_drift_data.columns
 
 
 def test_model_performance_passes():

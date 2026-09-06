@@ -102,7 +102,12 @@ def check_model_performance(metrics):
 
 def prepare_drift_data(reference_data, current_data):
     current_data = current_data.drop(
-        columns=["timestamp", "churn_probability", "prediction"],
+        columns=[
+            "timestamp",
+            "churn_probability",
+            "prediction",
+            "model_version",
+        ],
         errors="ignore",
     )
 
