@@ -53,6 +53,32 @@ def passes_production_quality_gate(roc_auc, minimum_roc_auc=0.80):
     return roc_auc >= minimum_roc_auc
 
 
+def get_production_roc_auc(model_name):
+    client = mlflow.MlflowClient()
+
+    try:
+        production_model = client.get_model_version_by_alias(
+            model_name,
+            "production",
+        )
+    except Exception:
+        return None
+
+    run = client.get_run(production_model.run_id)
+
+    return run.data.metrics.get("roc_auc")
+
+
+def passes_production_comparison_gate(
+    candidate_roc_auc,
+    production_roc_auc,
+):
+    if production_roc_auc is None:
+        return True
+
+    return candidate_roc_auc >= production_roc_auc
+
+
 # --------------------------------------------------
 # Training pipeline
 # --------------------------------------------------
@@ -182,10 +208,24 @@ def train_model():
         # Production quality gate
         # --------------------------------------------------
 
+        model_name = "customer-churn-model"
+
         if not passes_production_quality_gate(roc_auc):
             raise ValueError(
                 f"Model failed production quality gate: "
                 f"ROC-AUC={roc_auc:.4f}, required>=0.80"
+            )
+
+        production_roc_auc = get_production_roc_auc(model_name)
+
+        if not passes_production_comparison_gate(
+            roc_auc,
+            production_roc_auc,
+        ):
+            raise ValueError(
+                f"Model failed production comparison gate: "
+                f"candidate ROC-AUC={roc_auc:.4f}, "
+                f"production ROC-AUC={production_roc_auc:.4f}"
             )
 
         # --------------------------------------------------
@@ -236,7 +276,7 @@ def train_model():
         model_info = mlflow.xgboost.log_model(
             best_model,
             name="xgboost-model",
-            registered_model_name="customer-churn-model",
+            registered_model_name=model_name,
         )
 
         registered_version = model_info.registered_model_version
@@ -246,7 +286,7 @@ def train_model():
         # --------------------------------------------------
 
         promote_model_to_production(
-            "customer-churn-model",
+            model_name,
             registered_version,
         )
 
