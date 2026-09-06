@@ -37,3 +37,31 @@ jobs:
       - name: Build Docker image
         run: |
           docker build -t customer-churn-api .
+
+      - name: Start Docker container
+        run: |
+          docker run -d \
+            --name customer-churn-api-test \
+            -p 8000:8000 \
+            -e API_KEY=test-api-key \
+            -e ADMIN_API_KEY=test-admin-api-key \
+            customer-churn-api
+
+      - name: Verify Docker container health
+        run: |
+          for i in {1..30}; do
+            if curl --fail http://localhost:8000/health; then
+              echo "Docker container health check passed."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Docker container health check failed."
+          docker logs customer-churn-api-test
+          exit 1
+
+      - name: Stop Docker container
+        if: always()
+        run: |
+          docker rm -f customer-churn-api-test
