@@ -1,6 +1,7 @@
 from src.train import (
     calculate_file_hash,
     get_production_roc_auc,
+    get_training_environment,
     passes_production_comparison_gate,
     passes_production_quality_gate,
 )
@@ -31,6 +32,26 @@ def test_calculate_file_hash(tmp_path):
     actual_hash = calculate_file_hash(test_file)
 
     assert actual_hash == expected_hash
+
+
+def test_training_environment_contains_required_versions():
+    environment = get_training_environment()
+
+    expected_keys = {
+        "python",
+        "pandas",
+        "numpy",
+        "scikit_learn",
+        "xgboost",
+        "joblib",
+        "mlflow",
+    }
+
+    assert set(environment.keys()) == expected_keys
+
+    for value in environment.values():
+        assert isinstance(value, str)
+        assert value
 
 
 def test_production_roc_auc_returns_value(monkeypatch):

@@ -1,9 +1,14 @@
 from pathlib import Path
 import hashlib
+import json
+import sys
 
 import joblib
 import mlflow
+import numpy as np
 import pandas as pd
+import sklearn
+import xgboost
 
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import (
@@ -29,6 +34,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_PATH = BASE_DIR / "data" / "processed" / "cleaned_churn.csv"
 MODEL_PATH = BASE_DIR / "models" / "churn_model.pkl"
 PREPROCESSOR_PATH = BASE_DIR / "models" / "preprocessor.pkl"
+ENVIRONMENT_PATH = BASE_DIR / "models" / "training_environment.json"
 
 
 # --------------------------------------------------
@@ -43,6 +49,37 @@ def calculate_file_hash(file_path):
             sha256.update(chunk)
 
     return sha256.hexdigest()
+
+
+# --------------------------------------------------
+# Training environment lineage
+# --------------------------------------------------
+
+def get_training_environment():
+    return {
+        "python": sys.version.split()[0],
+        "pandas": pd.__version__,
+        "numpy": np.__version__,
+        "scikit_learn": sklearn.__version__,
+        "xgboost": xgboost.__version__,
+        "joblib": joblib.__version__,
+        "mlflow": mlflow.__version__,
+    }
+
+
+def save_training_environment(file_path):
+    environment = get_training_environment()
+
+    with open(
+        file_path,
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+            environment,
+            file,
+            indent=2,
+        )
 
 
 # --------------------------------------------------
@@ -262,6 +299,14 @@ def train_model():
         )
 
         # --------------------------------------------------
+        # Save training environment
+        # --------------------------------------------------
+
+        save_training_environment(
+            ENVIRONMENT_PATH
+        )
+
+        # --------------------------------------------------
         # Log metrics
         # --------------------------------------------------
 
@@ -292,6 +337,11 @@ def train_model():
             artifact_path="model",
         )
 
+        mlflow.log_artifact(
+            str(ENVIRONMENT_PATH),
+            artifact_path="metadata",
+        )
+
         # --------------------------------------------------
         # Register model
         # --------------------------------------------------
@@ -315,7 +365,14 @@ def train_model():
 
         print("Training completed successfully.")
         print("Best parameters:", grid_search.best_params_)
-        print(f"Training data SHA-256: {training_data_sha256}")
+        print(
+            f"Training data SHA-256: "
+            f"{training_data_sha256}"
+        )
+        print(
+            f"Training environment: "
+            f"{ENVIRONMENT_PATH}"
+        )
         print(f"Accuracy:  {accuracy:.4f}")
         print(f"Precision: {precision:.4f}")
         print(f"Recall:    {recall:.4f}")
