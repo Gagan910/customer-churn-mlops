@@ -1,4 +1,5 @@
 from pathlib import Path
+import hashlib
 
 import joblib
 import mlflow
@@ -28,6 +29,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_PATH = BASE_DIR / "data" / "processed" / "cleaned_churn.csv"
 MODEL_PATH = BASE_DIR / "models" / "churn_model.pkl"
 PREPROCESSOR_PATH = BASE_DIR / "models" / "preprocessor.pkl"
+
+
+# --------------------------------------------------
+# Dataset lineage
+# --------------------------------------------------
+
+def calculate_file_hash(file_path):
+    sha256 = hashlib.sha256()
+
+    with open(file_path, "rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            sha256.update(chunk)
+
+    return sha256.hexdigest()
 
 
 # --------------------------------------------------
@@ -90,6 +105,8 @@ def train_model():
     # --------------------------------------------------
 
     df = pd.read_csv(DATA_PATH)
+
+    training_data_sha256 = calculate_file_hash(DATA_PATH)
 
     # Target
     df["Churn"] = df["Churn"].map({"No": 0, "Yes": 1})
@@ -233,9 +250,15 @@ def train_model():
         # --------------------------------------------------
 
         mlflow.log_params(grid_search.best_params_)
+
         mlflow.log_param(
             "churn_threshold",
             CHURN_THRESHOLD,
+        )
+
+        mlflow.log_param(
+            "training_data_sha256",
+            training_data_sha256,
         )
 
         # --------------------------------------------------
@@ -292,6 +315,7 @@ def train_model():
 
         print("Training completed successfully.")
         print("Best parameters:", grid_search.best_params_)
+        print(f"Training data SHA-256: {training_data_sha256}")
         print(f"Accuracy:  {accuracy:.4f}")
         print(f"Precision: {precision:.4f}")
         print(f"Recall:    {recall:.4f}")
