@@ -3,8 +3,10 @@ import pandas as pd
 
 from monitoring.monitor import (
     calculate_model_metrics,
+    calculate_model_metrics_by_version,
     check_model_performance,
     check_data_drift,
+    evaluate_canary,
     should_retrain,
     write_retraining_output,
     prepare_drift_data,
@@ -84,6 +86,196 @@ def test_calculate_model_metrics():
     assert metrics["precision"] == 1.0
     assert metrics["recall"] == 0.5
     assert metrics["f1"] == pytest.approx(0.6666666667)
+
+
+def test_calculate_model_metrics_by_version():
+    current_data = pd.DataFrame(
+        {
+            "Churn": [
+                "No",
+                "Yes",
+                "No",
+                "Yes",
+                "No",
+                "Yes",
+            ],
+            "prediction": [
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+            ],
+            "churn_probability": [
+                0.10,
+                0.90,
+                0.20,
+                0.80,
+                0.30,
+                0.40,
+            ],
+            "model_version": [
+                "8",
+                "8",
+                "8",
+                "9",
+                "9",
+                "9",
+            ],
+        }
+    )
+
+    metrics_by_version = calculate_model_metrics_by_version(
+        current_data
+    )
+
+    assert set(metrics_by_version.keys()) == {"8", "9"}
+
+    assert "f1" in metrics_by_version["8"]
+    assert "roc_auc" in metrics_by_version["8"]
+
+    assert "f1" in metrics_by_version["9"]
+    assert "roc_auc" in metrics_by_version["9"]
+
+
+def test_evaluate_canary_not_ready_below_minimum_samples(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "monitoring.monitor.get_production_model_version",
+        lambda: "9",
+    )
+
+    current_data = pd.DataFrame(
+        {
+            "Churn": ["No", "Yes"] * 25,
+            "prediction": [0, 1] * 25,
+            "churn_probability": [0.10, 0.90] * 25,
+            "model_version": ["8"] * 50,
+        }
+    )
+
+    metrics_by_version = {
+        "8": {
+            "accuracy": 1.0,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0,
+        },
+        "9": {
+            "accuracy": 0.80,
+            "precision": 0.80,
+            "recall": 0.80,
+            "f1": 0.80,
+            "roc_auc": 0.85,
+        },
+    }
+
+    result = evaluate_canary(
+        current_data,
+        metrics_by_version,
+    )
+
+    assert result["ready"] is False
+    assert result["model_version"] == "8"
+    assert result["sample_count"] == 50
+    assert "100" in result["reason"]
+
+
+def test_evaluate_canary_ready_when_thresholds_pass(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "monitoring.monitor.get_production_model_version",
+        lambda: "9",
+    )
+
+    current_data = pd.DataFrame(
+        {
+            "Churn": ["No", "Yes"] * 50,
+            "prediction": [0, 1] * 50,
+            "churn_probability": [0.10, 0.90] * 50,
+            "model_version": ["8"] * 100,
+        }
+    )
+
+    metrics_by_version = {
+        "8": {
+            "accuracy": 0.90,
+            "precision": 0.85,
+            "recall": 0.85,
+            "f1": 0.85,
+            "roc_auc": 0.90,
+        },
+        "9": {
+            "accuracy": 0.80,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "roc_auc": 0.80,
+        },
+    }
+
+    result = evaluate_canary(
+        current_data,
+        metrics_by_version,
+    )
+
+    assert result["ready"] is True
+    assert result["model_version"] == "8"
+    assert result["sample_count"] == 100
+    assert result["production_version"] == "9"
+    assert result["f1_passes"] is True
+    assert result["roc_auc_passes"] is True
+
+
+def test_evaluate_canary_not_ready_when_threshold_fails(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "monitoring.monitor.get_production_model_version",
+        lambda: "9",
+    )
+
+    current_data = pd.DataFrame(
+        {
+            "Churn": ["No", "Yes"] * 50,
+            "prediction": [0, 1] * 50,
+            "churn_probability": [0.10, 0.90] * 50,
+            "model_version": ["8"] * 100,
+        }
+    )
+
+    metrics_by_version = {
+        "8": {
+            "accuracy": 0.70,
+            "precision": 0.45,
+            "recall": 0.45,
+            "f1": 0.45,
+            "roc_auc": 0.70,
+        },
+        "9": {
+            "accuracy": 0.80,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "roc_auc": 0.80,
+        },
+    }
+
+    result = evaluate_canary(
+        current_data,
+        metrics_by_version,
+    )
+
+    assert result["ready"] is False
+    assert result["model_version"] == "8"
+    assert result["sample_count"] == 100
+    assert result["f1_passes"] is False
+    assert result["roc_auc_passes"] is False
+    assert "performance checks failed" in result["reason"]
 
 
 def test_prepare_drift_data_excludes_metadata():

@@ -11,6 +11,7 @@ jobs:
 
     outputs:
       retrain_required: ${{ steps.monitoring.outputs.retrain_required }}
+      canary_ready: ${{ steps.monitoring.outputs.canary_ready }}
 
     steps:
       - name: Checkout code
@@ -41,6 +42,9 @@ jobs:
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          MLFLOW_TRACKING_URI: https://dagshub.com/Gagan910/customer-churn-mlops.mlflow
+          MLFLOW_TRACKING_USERNAME: Gagan910
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
         run: |
           python monitoring/monitor.py
 
@@ -50,6 +54,21 @@ jobs:
         with:
           name: drift-report
           path: monitoring/drift_report.html
+
+  canary-evaluation:
+    needs: monitor
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Report canary decision
+        env:
+          CANARY_READY: ${{ needs.monitor.outputs.canary_ready }}
+        run: |
+          if [ "$CANARY_READY" = "true" ]; then
+            echo "CANARY_READY: Canary passed all deployment checks."
+          else
+            echo "CANARY_NOT_READY: Canary has not passed all deployment checks."
+          fi
 
   retrain:
     needs: monitor

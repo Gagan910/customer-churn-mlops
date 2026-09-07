@@ -21,7 +21,15 @@ from typing import Literal
 
 import src.predict as prediction_module
 
-from src.config import API_KEY, ADMIN_API_KEY, RATE_LIMIT, API_VERSION
+from src.config import (
+    API_KEY,
+    ADMIN_API_KEY,
+    RATE_LIMIT,
+    API_VERSION,
+    CANARY_ENABLED,
+    CANARY_TRAFFIC_PERCENT,
+    CANARY_MODEL_VERSION,
+)
 from src.explain import explain_prediction
 from src.train import rollback_model
 
@@ -249,6 +257,14 @@ def health():
         "model_loaded": model is not None,
         "preprocessor_loaded": preprocessor is not None,
         "model_version": model_version,
+        "canary_enabled": CANARY_ENABLED,
+        "canary_traffic_percent": CANARY_TRAFFIC_PERCENT,
+        "canary_model_version": CANARY_MODEL_VERSION,
+        "canary_model_loaded": (
+            prediction_module.canary_model is not None
+            and prediction_module.canary_preprocessor is not None
+        ),
+        "canary_loaded_version": prediction_module.canary_model_version,
     }
 
 
@@ -265,6 +281,14 @@ def readiness():
         "model_loaded": True,
         "preprocessor_loaded": True,
         "model_version": model_version,
+        "canary_enabled": CANARY_ENABLED,
+        "canary_traffic_percent": CANARY_TRAFFIC_PERCENT,
+        "canary_model_version": CANARY_MODEL_VERSION,
+        "canary_model_loaded": (
+            prediction_module.canary_model is not None
+            and prediction_module.canary_preprocessor is not None
+        ),
+        "canary_loaded_version": prediction_module.canary_model_version,
     }
 
 
@@ -329,7 +353,8 @@ def reload_model_endpoint():
         "message": "Model reloaded successfully",
         "model_version": model_version,
     }
-    
+
+
 @app.post(
     "/admin/rollback-model",
     dependencies=[Depends(verify_admin_api_key)],

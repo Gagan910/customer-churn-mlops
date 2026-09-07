@@ -9,6 +9,7 @@ from configs.monitoring_config import (
     F1_THRESHOLD,
     ROC_AUC_THRESHOLD,
     DRIFT_SHARE_THRESHOLD,
+    CANARY_MINIMUM_SAMPLES,
 )
 
 from sklearn.metrics import (
@@ -68,6 +69,167 @@ def calculate_model_metrics(current_data):
         "recall": recall,
         "f1": f1,
         "roc_auc": roc_auc,
+    }
+
+
+def calculate_model_metrics_by_version(current_data):
+    metrics_by_version = {}
+
+    for model_version, model_data in current_data.groupby(
+        "model_version",
+        dropna=False,
+    ):
+        if model_data["Churn"].isna().any():
+            raise ValueError(
+                f"Missing ground-truth labels for model version "
+                f"'{model_version}'."
+            )
+
+        if model_data["Churn"].nunique() < 2:
+            raise ValueError(
+                f"ROC-AUC cannot be calculated for model version "
+                f"'{model_version}' because the monitoring window "
+                f"contains only one ground-truth class."
+            )
+
+        metrics_by_version[str(model_version)] = (
+            calculate_model_metrics(model_data)
+        )
+
+    return metrics_by_version
+
+
+def get_production_model_version():
+    try:
+        import mlflow
+
+        production_model = (
+            mlflow.MlflowClient().get_model_version_by_alias(
+                "customer-churn-model",
+                "production",
+            )
+        )
+
+        return str(production_model.version)
+
+    except Exception as exc:
+        raise RuntimeError(
+            "Unable to resolve the production model version "
+            "from the MLflow production alias."
+        ) from exc
+
+
+def evaluate_canary(
+    current_data,
+    metrics_by_version,
+):
+    production_version = get_production_model_version()
+
+    if production_version not in metrics_by_version:
+        return {
+            "ready": False,
+            "reason": (
+                f"Production model version {production_version} "
+                "has no predictions in the monitoring window."
+            ),
+            "production_version": production_version,
+        }
+
+    canary_versions = [
+        version
+        for version in metrics_by_version
+        if version != production_version
+    ]
+
+    if not canary_versions:
+        return {
+            "ready": False,
+            "reason": "No canary model version detected.",
+            "production_version": production_version,
+        }
+
+    if len(canary_versions) > 1:
+        return {
+            "ready": False,
+            "reason": (
+                "Multiple non-production model versions detected."
+            ),
+            "production_version": production_version,
+        }
+
+    canary_version = canary_versions[0]
+
+    canary_data = current_data[
+        current_data["model_version"].astype(str)
+        == canary_version
+    ]
+
+    sample_count = len(canary_data)
+
+    if sample_count < CANARY_MINIMUM_SAMPLES:
+        return {
+            "ready": False,
+            "reason": (
+                f"Canary has only {sample_count} labeled predictions; "
+                f"{CANARY_MINIMUM_SAMPLES} are required."
+            ),
+            "model_version": canary_version,
+            "sample_count": sample_count,
+            "production_version": production_version,
+        }
+
+    canary_metrics = metrics_by_version[canary_version]
+    production_metrics = metrics_by_version[production_version]
+
+    f1_passes = canary_metrics["f1"] >= F1_THRESHOLD
+
+    roc_auc_passes = (
+        canary_metrics["roc_auc"] >= ROC_AUC_THRESHOLD
+    )
+
+    f1_comparison_passes = (
+        canary_metrics["f1"] >= production_metrics["f1"]
+    )
+
+    roc_auc_comparison_passes = (
+        canary_metrics["roc_auc"] >= production_metrics["roc_auc"]
+    )
+
+    if (
+        not f1_passes
+        or not roc_auc_passes
+        or not f1_comparison_passes
+        or not roc_auc_comparison_passes
+    ):
+        return {
+            "ready": False,
+            "reason": "Canary performance checks failed.",
+            "model_version": canary_version,
+            "sample_count": sample_count,
+            "metrics": canary_metrics,
+            "production_version": production_version,
+            "production_metrics": production_metrics,
+            "f1_passes": f1_passes,
+            "roc_auc_passes": roc_auc_passes,
+            "f1_comparison_passes": f1_comparison_passes,
+            "roc_auc_comparison_passes": roc_auc_comparison_passes,
+        }
+
+    return {
+        "ready": True,
+        "reason": (
+            "Canary passed minimum sample, absolute performance, "
+            "and production comparison checks."
+        ),
+        "model_version": canary_version,
+        "sample_count": sample_count,
+        "metrics": canary_metrics,
+        "production_version": production_version,
+        "production_metrics": production_metrics,
+        "f1_passes": f1_passes,
+        "roc_auc_passes": roc_auc_passes,
+        "f1_comparison_passes": f1_comparison_passes,
+        "roc_auc_comparison_passes": roc_auc_comparison_passes,
     }
 
 
@@ -205,6 +367,21 @@ def write_retraining_output(retrain_required):
             f"{'true' if retrain_required else 'false'}\n"
         )
 
+def write_canary_output(canary_ready):
+    github_output = os.getenv("GITHUB_OUTPUT")
+
+    if not github_output:
+        return
+
+    with open(
+        github_output,
+        "a",
+        encoding="utf-8",
+    ) as output_file:
+        output_file.write(
+            f"canary_ready="
+            f"{'true' if canary_ready else 'false'}\n"
+        )
 
 def main():
     reference_data, current_data = load_monitoring_data()
@@ -230,7 +407,55 @@ def main():
         f"{metrics['roc_auc']:.2%} >= {ROC_AUC_THRESHOLD:.2%}"
     )
 
-    print(f"Monitoring window: {len(current_data)} predictions")
+    print("\nModel Performance by Version:")
+
+    metrics_by_version = calculate_model_metrics_by_version(
+        current_data
+    )
+
+    for model_version, version_metrics in metrics_by_version.items():
+        print(f"\nModel version: {model_version}")
+        print(f"  Accuracy:  {version_metrics['accuracy']:.2%}")
+        print(f"  Precision: {version_metrics['precision']:.2%}")
+        print(f"  Recall:    {version_metrics['recall']:.2%}")
+        print(f"  F1 Score:  {version_metrics['f1']:.2%}")
+        print(f"  ROC-AUC:   {version_metrics['roc_auc']:.2%}")
+
+    canary_evaluation = evaluate_canary(
+        current_data,
+        metrics_by_version,
+    )
+
+    print("\nCanary Evaluation:")
+
+    if canary_evaluation["ready"]:
+        print(
+            f"Canary v{canary_evaluation['model_version']} "
+            f"is ready for deployment decision."
+        )
+        print(
+            f"Canary samples: "
+            f"{canary_evaluation['sample_count']}"
+        )
+        print(
+            f"Canary F1: "
+            f"{canary_evaluation['metrics']['f1']:.2%}"
+        )
+        print(
+            f"Canary ROC-AUC: "
+            f"{canary_evaluation['metrics']['roc_auc']:.2%}"
+        )
+        print(
+            f"Production version: "
+            f"{canary_evaluation['production_version']}"
+        )
+    else:
+        print(
+            f"Canary evaluation not ready: "
+            f"{canary_evaluation['reason']}"
+        )
+
+    print(f"\nMonitoring window: {len(current_data)} predictions")
     print(
         f"Predicted churn rate: "
         f"{current_data['prediction'].mean():.2%}"
@@ -278,6 +503,9 @@ def main():
         print("RETRAIN_NOT_REQUIRED")
 
     write_retraining_output(retrain_required)
+    write_canary_output(
+        canary_evaluation["ready"]
+    )
 
     drift_summary["result"].save_html(
         "monitoring/drift_report.html"

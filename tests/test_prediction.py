@@ -93,6 +93,81 @@ def test_predict_with_api_key(monkeypatch):
     )
 
     assert response.status_code != 401
+    
+def test_predict_api_uses_canary_model(monkeypatch):
+    monkeypatch.setattr(
+        "api.main.API_KEY",
+        "canary-api-test-key",
+    )
+
+    monkeypatch.setattr(
+        "api.main.prediction_module.CANARY_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        "api.main.prediction_module.CANARY_TRAFFIC_PERCENT",
+        100,
+    )
+    monkeypatch.setattr(
+        "api.main.prediction_module.model_version",
+        "9",
+    )
+    monkeypatch.setattr(
+        "api.main.prediction_module.canary_model_version",
+        "10",
+    )
+
+    class FakePreprocessor:
+        def transform(self, data):
+            return data
+
+    class FakeModel:
+        def predict_proba(self, data):
+            return [[0.2, 0.8]]
+
+    monkeypatch.setattr(
+        "api.main.prediction_module.canary_model",
+        FakeModel(),
+    )
+    monkeypatch.setattr(
+        "api.main.prediction_module.canary_preprocessor",
+        FakePreprocessor(),
+    )
+
+    customer = {
+        "gender": "Female",
+        "SeniorCitizen": 0,
+        "Partner": "Yes",
+        "Dependents": "No",
+        "tenure": 5,
+        "PhoneService": "Yes",
+        "MultipleLines": "No",
+        "InternetService": "Fiber optic",
+        "OnlineSecurity": "No",
+        "OnlineBackup": "No",
+        "DeviceProtection": "No",
+        "TechSupport": "No",
+        "StreamingTV": "Yes",
+        "StreamingMovies": "Yes",
+        "Contract": "Month-to-month",
+        "PaperlessBilling": "Yes",
+        "PaymentMethod": "Electronic check",
+        "MonthlyCharges": 85.0,
+        "TotalCharges": 425.0,
+    }
+
+    response = client.post(
+        "/predict",
+        json=customer,
+        headers={"x-api-key": "canary-api-test-key"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["churn_probability"] == 0.8
+    assert data["prediction"] == 1
 
 def test_explain_without_api_key():
     response = client.post("/explain", json={})
@@ -115,6 +190,44 @@ def test_health_reports_model_version(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["model_version"] == "7"
+    
+def test_health_reports_canary_status(monkeypatch):
+    monkeypatch.setattr(
+        "api.main.CANARY_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        "api.main.CANARY_TRAFFIC_PERCENT",
+        10.0,
+    )
+    monkeypatch.setattr(
+        "api.main.CANARY_MODEL_VERSION",
+        10,
+    )
+    monkeypatch.setattr(
+        "api.main.prediction_module.canary_model",
+        object(),
+    )
+    monkeypatch.setattr(
+        "api.main.prediction_module.canary_preprocessor",
+        object(),
+    )
+    monkeypatch.setattr(
+        "api.main.prediction_module.canary_model_version",
+        "10",
+    )
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["canary_enabled"] is True
+    assert data["canary_traffic_percent"] == 10.0
+    assert data["canary_model_version"] == 10
+    assert data["canary_model_loaded"] is True
+    assert data["canary_loaded_version"] == "10"
 
 def test_predict_returns_request_id(monkeypatch):
     monkeypatch.setattr("api.main.API_KEY", "request-id-test-key")
@@ -523,3 +636,364 @@ def test_admin_rollback_model_without_history(monkeypatch):
             "is not recorded."
         )
     )
+    
+def test_canary_model_not_loaded_when_disabled(monkeypatch):
+    monkeypatch.setattr(
+        "src.predict.CANARY_ENABLED",
+        False,
+    )
+
+    from src.predict import load_canary_model
+
+    result = load_canary_model()
+
+    assert result == (None, None, None)
+
+
+def test_canary_model_requires_mlflow(monkeypatch):
+    monkeypatch.setattr(
+        "src.predict.CANARY_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        "src.predict.CANARY_MODEL_VERSION",
+        10,
+    )
+    monkeypatch.setattr(
+        "src.predict.MODEL_SOURCE",
+        "local",
+    )
+
+    from src.predict import load_canary_model
+
+    result = load_canary_model()
+
+    assert result == (None, None, None)
+
+
+def test_canary_model_loads_from_mlflow(monkeypatch):
+    import src.predict as prediction_module
+
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_MODEL_VERSION",
+        10,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "MODEL_SOURCE",
+        "mlflow",
+    )
+
+    class FakeCanaryModel:
+        pass
+
+    class FakeModelInfo:
+        version = 10
+        run_id = "test-run-id"
+
+    class FakeClient:
+        def get_model_version(
+            self,
+            model_name,
+            model_version,
+        ):
+            assert model_name == "customer-churn-model"
+            assert model_version == "10"
+
+            return FakeModelInfo()
+
+    class FakeMLflow:
+        class xgboost:
+            @staticmethod
+            def load_model(model_uri):
+                assert (
+                    model_uri
+                    == "models:/customer-churn-model/10"
+                )
+
+                return FakeCanaryModel()
+
+        class MlflowClient:
+            def __new__(cls):
+                return FakeClient()
+
+        class artifacts:
+            @staticmethod
+            def download_artifacts(
+                run_id,
+                artifact_path,
+            ):
+                assert run_id == "test-run-id"
+                assert (
+                    artifact_path
+                    == "model/preprocessor.pkl"
+                )
+
+                return "fake-preprocessor.pkl"
+
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "mlflow",
+        FakeMLflow,
+    )
+
+    monkeypatch.setattr(
+        prediction_module.joblib,
+        "load",
+        lambda path: "fake-preprocessor",
+    )
+
+    result = prediction_module.load_canary_model()
+
+    assert result[0].__class__.__name__ == "FakeCanaryModel"
+    assert result[1] == "fake-preprocessor"
+    assert result[2] == "10"
+
+
+def test_canary_model_load_failure_returns_none(monkeypatch):
+    import src.predict as prediction_module
+
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_MODEL_VERSION",
+        10,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "MODEL_SOURCE",
+        "mlflow",
+    )
+
+    class FakeMLflow:
+        class xgboost:
+            @staticmethod
+            def load_model(model_uri):
+                raise RuntimeError(
+                    "test canary load failure"
+                )
+
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "mlflow",
+        FakeMLflow,
+    )
+
+    result = prediction_module.load_canary_model()
+
+    assert result == (None, None, None)
+    
+def test_canary_routing_zero_percent(monkeypatch):
+    import src.predict as prediction_module
+
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_TRAFFIC_PERCENT",
+        0,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "model_version",
+        "9",
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_model_version",
+        "10",
+    )
+
+    selected = prediction_module._select_prediction_model()
+
+    assert selected[2] == "9"
+    assert selected[3] == "production"
+
+
+def test_canary_routing_hundred_percent(monkeypatch):
+    import src.predict as prediction_module
+
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_TRAFFIC_PERCENT",
+        100,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "model_version",
+        "9",
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_model",
+        object(),
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_preprocessor",
+        object(),
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_model_version",
+        "10",
+    )
+
+    selected = prediction_module._select_prediction_model()
+
+    assert selected[2] == "10"
+    assert selected[3] == "canary"
+
+
+def test_canary_routing_fifty_percent_canary(monkeypatch):
+    import src.predict as prediction_module
+
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_TRAFFIC_PERCENT",
+        50,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "model_version",
+        "9",
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_model",
+        object(),
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_preprocessor",
+        object(),
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_model_version",
+        "10",
+    )
+    monkeypatch.setattr(
+        prediction_module.random,
+        "uniform",
+        lambda start, end: 25,
+    )
+
+    selected = prediction_module._select_prediction_model()
+
+    assert selected[2] == "10"
+    assert selected[3] == "canary"
+
+
+def test_canary_routing_fifty_percent_production(monkeypatch):
+    import src.predict as prediction_module
+
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_TRAFFIC_PERCENT",
+        50,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "model_version",
+        "9",
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_model",
+        object(),
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_preprocessor",
+        object(),
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_model_version",
+        "10",
+    )
+    monkeypatch.setattr(
+        prediction_module.random,
+        "uniform",
+        lambda start, end: 75,
+    )
+
+    selected = prediction_module._select_prediction_model()
+
+    assert selected[2] == "9"
+    assert selected[3] == "production"
+    
+def test_canary_routing_falls_back_to_production_when_unavailable(
+    monkeypatch,
+):
+    import src.predict as prediction_module
+
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_TRAFFIC_PERCENT",
+        50,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "CANARY_MODEL_VERSION",
+        10,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "model_version",
+        "9",
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_model",
+        None,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_preprocessor",
+        None,
+    )
+    monkeypatch.setattr(
+        prediction_module,
+        "canary_model_version",
+        None,
+    )
+
+    selected = prediction_module._select_prediction_model()
+
+    assert selected[2] == "9"
+    assert selected[3] == "production"
