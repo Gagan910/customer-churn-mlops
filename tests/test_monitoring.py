@@ -146,6 +146,11 @@ def test_evaluate_canary_not_ready_below_minimum_samples(
         "monitoring.monitor.get_production_model_version",
         lambda: "9",
     )
+    
+    monkeypatch.setattr(
+        "monitoring.monitor.CANARY_MODEL_VERSION",
+        8,
+    )
 
     current_data = pd.DataFrame(
         {
