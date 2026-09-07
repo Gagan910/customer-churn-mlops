@@ -12,6 +12,8 @@ from configs.monitoring_config import (
     CANARY_MINIMUM_SAMPLES,
 )
 
+from src.config import CANARY_MODEL_VERSION
+
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -48,6 +50,23 @@ def load_monitoring_data(
 
     return reference_data, current_data
 
+def load_canary_evaluation_data(
+    current_data_path=CURRENT_DATA_PATH,
+):
+    current_data = pd.read_csv(current_data_path)
+
+    labeled_data = current_data.dropna(
+        subset=["Churn"]
+    )
+
+    if len(labeled_data) < CANARY_MINIMUM_SAMPLES:
+        raise ValueError(
+            f"Not enough labeled prediction data for canary evaluation. "
+            f"Required {CANARY_MINIMUM_SAMPLES} rows, "
+            f"found {len(labeled_data)}."
+        )
+
+    return labeled_data
 
 def calculate_model_metrics(current_data):
     actual = current_data["Churn"].map({"No": 0, "Yes": 1})
@@ -75,22 +94,16 @@ def calculate_model_metrics(current_data):
 def calculate_model_metrics_by_version(current_data):
     metrics_by_version = {}
 
-    for model_version, model_data in current_data.groupby(
+    labeled_data = current_data.dropna(
+        subset=["Churn"]
+    )
+
+    for model_version, model_data in labeled_data.groupby(
         "model_version",
         dropna=False,
     ):
-        if model_data["Churn"].isna().any():
-            raise ValueError(
-                f"Missing ground-truth labels for model version "
-                f"'{model_version}'."
-            )
-
         if model_data["Churn"].nunique() < 2:
-            raise ValueError(
-                f"ROC-AUC cannot be calculated for model version "
-                f"'{model_version}' because the monitoring window "
-                f"contains only one ground-truth class."
-            )
+            continue
 
         metrics_by_version[str(model_version)] = (
             calculate_model_metrics(model_data)
@@ -135,29 +148,36 @@ def evaluate_canary(
             "production_version": production_version,
         }
 
-    canary_versions = [
-        version
-        for version in metrics_by_version
-        if version != production_version
-    ]
-
-    if not canary_versions:
+    if CANARY_MODEL_VERSION is None:
         return {
             "ready": False,
-            "reason": "No canary model version detected.",
+            "reason": "Canary model version is not configured.",
             "production_version": production_version,
         }
 
-    if len(canary_versions) > 1:
+    canary_version = str(CANARY_MODEL_VERSION)
+
+    if canary_version == production_version:
         return {
             "ready": False,
             "reason": (
-                "Multiple non-production model versions detected."
+                f"Configured canary version {canary_version} "
+                "is already the production version."
             ),
+            "model_version": canary_version,
             "production_version": production_version,
         }
 
-    canary_version = canary_versions[0]
+    if canary_version not in metrics_by_version:
+        return {
+            "ready": False,
+            "reason": (
+                f"Configured canary model version {canary_version} "
+                "has no labeled predictions."
+            ),
+            "model_version": canary_version,
+            "production_version": production_version,
+        }
 
     canary_data = current_data[
         current_data["model_version"].astype(str)
@@ -385,8 +405,18 @@ def write_canary_output(canary_ready):
 
 def main():
     reference_data, current_data = load_monitoring_data()
+    canary_data = load_canary_evaluation_data()
 
-    metrics = calculate_model_metrics(current_data)
+    labeled_current_data = current_data.dropna(
+        subset=["Churn"]
+    )
+
+    if labeled_current_data.empty:
+        raise ValueError(
+            "No labeled prediction data available for model monitoring."
+        )
+
+    metrics = calculate_model_metrics(labeled_current_data)
 
     print("\nModel Performance:")
     print(f"Accuracy:  {metrics['accuracy']:.2%}")
@@ -410,7 +440,7 @@ def main():
     print("\nModel Performance by Version:")
 
     metrics_by_version = calculate_model_metrics_by_version(
-        current_data
+        canary_data
     )
 
     for model_version, version_metrics in metrics_by_version.items():
@@ -422,7 +452,7 @@ def main():
         print(f"  ROC-AUC:   {version_metrics['roc_auc']:.2%}")
 
     canary_evaluation = evaluate_canary(
-        current_data,
+        canary_data,
         metrics_by_version,
     )
 
