@@ -252,11 +252,41 @@ def home():
 
 @app.get("/health")
 def health():
+    mlflow_production_version = None
+    mlflow_production_run_id = None
+
+    if prediction_module.model is not None:
+        try:
+            import mlflow
+
+            client = mlflow.MlflowClient()
+
+            production_model = (
+                client.get_model_version_by_alias(
+                    "customer-churn-model",
+                    "production",
+                )
+            )
+
+            mlflow_production_version = str(
+                production_model.version
+            )
+            mlflow_production_run_id = (
+                production_model.run_id
+            )
+
+        except Exception:
+            logger.exception(
+                "Health check MLflow alias lookup failed"
+            )
+
     return {
         "status": "healthy",
         "model_loaded": model is not None,
         "preprocessor_loaded": preprocessor is not None,
         "model_version": model_version,
+        "mlflow_production_version": mlflow_production_version,
+        "mlflow_production_run_id": mlflow_production_run_id,
         "canary_enabled": CANARY_ENABLED,
         "canary_traffic_percent": CANARY_TRAFFIC_PERCENT,
         "canary_model_version": CANARY_MODEL_VERSION,
