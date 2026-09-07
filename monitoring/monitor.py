@@ -50,6 +50,7 @@ def load_monitoring_data(
 
     return reference_data, current_data
 
+
 def load_canary_evaluation_data(
     current_data_path=CURRENT_DATA_PATH,
 ):
@@ -67,6 +68,7 @@ def load_canary_evaluation_data(
         )
 
     return labeled_data
+
 
 def calculate_model_metrics(current_data):
     actual = current_data["Churn"].map({"No": 0, "Yes": 1})
@@ -387,7 +389,11 @@ def write_retraining_output(retrain_required):
             f"{'true' if retrain_required else 'false'}\n"
         )
 
-def write_canary_output(canary_ready):
+
+def write_canary_output(
+    canary_ready,
+    canary_model_version,
+):
     github_output = os.getenv("GITHUB_OUTPUT")
 
     if not github_output:
@@ -402,6 +408,12 @@ def write_canary_output(canary_ready):
             f"canary_ready="
             f"{'true' if canary_ready else 'false'}\n"
         )
+
+        output_file.write(
+            f"canary_model_version="
+            f"{canary_model_version or ''}\n"
+        )
+
 
 def main():
     reference_data, current_data = load_monitoring_data()
@@ -533,8 +545,10 @@ def main():
         print("RETRAIN_NOT_REQUIRED")
 
     write_retraining_output(retrain_required)
+
     write_canary_output(
-        canary_evaluation["ready"]
+        canary_evaluation["ready"],
+        canary_evaluation.get("model_version"),
     )
 
     drift_summary["result"].save_html(

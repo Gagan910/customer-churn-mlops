@@ -12,6 +12,7 @@ jobs:
     outputs:
       retrain_required: ${{ steps.monitoring.outputs.retrain_required }}
       canary_ready: ${{ steps.monitoring.outputs.canary_ready }}
+      canary_model_version: ${{ steps.monitoring.outputs.canary_model_version }}
 
     steps:
       - name: Checkout code
@@ -64,12 +65,50 @@ jobs:
       - name: Report canary decision
         env:
           CANARY_READY: ${{ needs.monitor.outputs.canary_ready }}
+          CANARY_MODEL_VERSION: ${{ needs.monitor.outputs.canary_model_version }}
         run: |
           if [ "$CANARY_READY" = "true" ]; then
-            echo "CANARY_READY: Canary passed all deployment checks."
+            echo "CANARY_READY: Canary v$CANARY_MODEL_VERSION passed all deployment checks."
           else
-            echo "CANARY_NOT_READY: Canary has not passed all deployment checks."
+            echo "CANARY_NOT_READY: Canary v$CANARY_MODEL_VERSION has not passed all deployment checks."
           fi
+
+  canary-promotion:
+    needs: monitor
+    if: needs.monitor.outputs.canary_ready == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Promote evaluated canary
+        env:
+          MLFLOW_TRACKING_URI: https://dagshub.com/Gagan910/customer-churn-mlops.mlflow
+          MLFLOW_TRACKING_USERNAME: Gagan910
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_VERSION: ${{ needs.monitor.outputs.canary_model_version }}
+        run: |
+          python -c "from src.train import promote_canary_to_production; promote_canary_to_production('customer-churn-model', {'ready': True, 'model_version': '${MODEL_VERSION}'})"
+
+      - name: Verify production alias
+        env:
+          MLFLOW_TRACKING_URI: https://dagshub.com/Gagan910/customer-churn-mlops.mlflow
+          MLFLOW_TRACKING_USERNAME: Gagan910
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_VERSION: ${{ needs.monitor.outputs.canary_model_version }}
+        run: |
+          python -c "import mlflow; actual = str(mlflow.MlflowClient().get_model_version_by_alias('customer-churn-model', 'production').version); expected = '${MODEL_VERSION}'; print(f'Production model version: {actual}'); assert actual == expected, f'Expected production version {expected}, found {actual}'"
 
   retrain:
     needs: monitor
