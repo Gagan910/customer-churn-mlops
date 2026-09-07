@@ -89,6 +89,29 @@ def save_training_environment(file_path):
 def promote_model_to_production(model_name, model_version):
     client = mlflow.MlflowClient()
 
+    previous_production_version = None
+
+    try:
+        current_production = client.get_model_version_by_alias(
+            model_name,
+            "production",
+        )
+
+        previous_production_version = str(
+            current_production.version
+        )
+
+    except Exception:
+        previous_production_version = None
+
+    if previous_production_version is not None:
+        client.set_model_version_tag(
+            model_name,
+            str(model_version),
+            "previous_production_version",
+            previous_production_version,
+        )
+
     client.set_registered_model_alias(
         model_name,
         "production",
@@ -99,6 +122,46 @@ def promote_model_to_production(model_name, model_version):
         f"Model {model_name} version {model_version} "
         "promoted to production."
     )
+
+    if previous_production_version is not None:
+        print(
+            f"Previous production version: "
+            f"{previous_production_version}"
+        )
+        
+def rollback_model(model_name):
+    client = mlflow.MlflowClient()
+
+    current_production = client.get_model_version_by_alias(
+        model_name,
+        "production",
+    )
+
+    current_version = str(current_production.version)
+
+    previous_version = current_production.tags.get(
+        "previous_production_version"
+    )
+
+    if previous_version is None:
+        raise ValueError(
+            f"Cannot rollback model {model_name} version "
+            f"{current_version}: previous production version "
+            "is not recorded."
+        )
+
+    client.set_registered_model_alias(
+        model_name,
+        "production",
+        previous_version,
+    )
+
+    print(
+        f"Model {model_name} rolled back from version "
+        f"{current_version} to version {previous_version}."
+    )
+
+    return previous_version
 
 
 def passes_production_quality_gate(roc_auc, minimum_roc_auc=0.80):

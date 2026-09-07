@@ -4,6 +4,8 @@ from src.train import (
     get_training_environment,
     passes_production_comparison_gate,
     passes_production_quality_gate,
+    promote_model_to_production,
+    rollback_model,
 )
 
 
@@ -109,3 +111,251 @@ def test_production_comparison_gate_fails_when_candidate_is_worse():
         passes_production_comparison_gate(0.83, 0.84)
         is False
     )
+
+
+def test_promotion_records_previous_production_version(
+    monkeypatch,
+):
+    recorded_tags = []
+    promoted_alias = []
+
+    class FakeProductionModel:
+        version = "7"
+
+    class FakeClient:
+        def get_model_version_by_alias(
+            self,
+            model_name,
+            alias,
+        ):
+            assert model_name == "customer-churn-model"
+            assert alias == "production"
+
+            return FakeProductionModel()
+
+        def set_model_version_tag(
+            self,
+            model_name,
+            model_version,
+            key,
+            value,
+        ):
+            recorded_tags.append(
+                (
+                    model_name,
+                    model_version,
+                    key,
+                    value,
+                )
+            )
+
+        def set_registered_model_alias(
+            self,
+            model_name,
+            alias,
+            model_version,
+        ):
+            promoted_alias.append(
+                (
+                    model_name,
+                    alias,
+                    model_version,
+                )
+            )
+
+    monkeypatch.setattr(
+        "src.train.mlflow.MlflowClient",
+        FakeClient,
+    )
+
+    promote_model_to_production(
+        "customer-churn-model",
+        9,
+    )
+
+    assert recorded_tags == [
+        (
+            "customer-churn-model",
+            "9",
+            "previous_production_version",
+            "7",
+        )
+    ]
+
+    assert promoted_alias == [
+        (
+            "customer-churn-model",
+            "production",
+            "9",
+        )
+    ]
+
+
+def test_promotion_without_existing_production_does_not_create_tag(
+    monkeypatch,
+):
+    recorded_tags = []
+    promoted_alias = []
+
+    class FakeClient:
+        def get_model_version_by_alias(
+            self,
+            model_name,
+            alias,
+        ):
+            raise Exception("Production model not found")
+
+        def set_model_version_tag(
+            self,
+            model_name,
+            model_version,
+            key,
+            value,
+        ):
+            recorded_tags.append(
+                (
+                    model_name,
+                    model_version,
+                    key,
+                    value,
+                )
+            )
+
+        def set_registered_model_alias(
+            self,
+            model_name,
+            alias,
+            model_version,
+        ):
+            promoted_alias.append(
+                (
+                    model_name,
+                    alias,
+                    model_version,
+                )
+            )
+
+    monkeypatch.setattr(
+        "src.train.mlflow.MlflowClient",
+        FakeClient,
+    )
+
+    promote_model_to_production(
+        "customer-churn-model",
+        1,
+    )
+
+    assert recorded_tags == []
+
+    assert promoted_alias == [
+        (
+            "customer-churn-model",
+            "production",
+            "1",
+        )
+    ]
+
+
+def test_rollback_model_restores_previous_production_version(
+    monkeypatch,
+):
+    promoted_alias = []
+
+    class FakeProductionModel:
+        version = "9"
+        tags = {
+            "previous_production_version": "7"
+        }
+
+    class FakeClient:
+        def get_model_version_by_alias(
+            self,
+            model_name,
+            alias,
+        ):
+            assert model_name == "customer-churn-model"
+            assert alias == "production"
+
+            return FakeProductionModel()
+
+        def set_registered_model_alias(
+            self,
+            model_name,
+            alias,
+            model_version,
+        ):
+            promoted_alias.append(
+                (
+                    model_name,
+                    alias,
+                    model_version,
+                )
+            )
+
+    monkeypatch.setattr(
+        "src.train.mlflow.MlflowClient",
+        FakeClient,
+    )
+
+    previous_version = rollback_model(
+        "customer-churn-model"
+    )
+
+    assert previous_version == "7"
+
+    assert promoted_alias == [
+        (
+            "customer-churn-model",
+            "production",
+            "7",
+        )
+    ]
+
+
+def test_rollback_model_fails_without_previous_version(
+    monkeypatch,
+):
+    promoted_alias = []
+
+    class FakeProductionModel:
+        version = "9"
+        tags = {}
+
+    class FakeClient:
+        def get_model_version_by_alias(
+            self,
+            model_name,
+            alias,
+        ):
+            return FakeProductionModel()
+
+        def set_registered_model_alias(
+            self,
+            model_name,
+            alias,
+            model_version,
+        ):
+            promoted_alias.append(
+                (
+                    model_name,
+                    alias,
+                    model_version,
+                )
+            )
+
+    monkeypatch.setattr(
+        "src.train.mlflow.MlflowClient",
+        FakeClient,
+    )
+
+    import pytest
+
+    with pytest.raises(
+        ValueError,
+        match="previous production version is not recorded",
+    ):
+        rollback_model(
+            "customer-churn-model"
+        )
+
+    assert promoted_alias == []

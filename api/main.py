@@ -23,6 +23,7 @@ import src.predict as prediction_module
 
 from src.config import API_KEY, ADMIN_API_KEY, RATE_LIMIT, API_VERSION
 from src.explain import explain_prediction
+from src.train import rollback_model
 
 
 logging.basicConfig(
@@ -328,6 +329,55 @@ def reload_model_endpoint():
         "message": "Model reloaded successfully",
         "model_version": model_version,
     }
+    
+@app.post(
+    "/admin/rollback-model",
+    dependencies=[Depends(verify_admin_api_key)],
+)
+def rollback_model_endpoint():
+    try:
+        rollback_model("customer-churn-model")
+
+        success = reload_model()
+
+        sync_prediction_references()
+
+        if not success:
+            raise HTTPException(
+                status_code=503,
+                detail="Model reload failed after rollback",
+            )
+
+        logger.info(
+            "Model rollback completed successfully | "
+            "model_version=%s",
+            model_version,
+        )
+
+        return {
+            "status": "success",
+            "message": "Model rollback completed successfully",
+            "model_version": model_version,
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception(
+            "Model rollback failed"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Model rollback failed. Please try again later.",
+        )
 
 
 @v1_router.post(

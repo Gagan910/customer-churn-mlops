@@ -444,3 +444,82 @@ def test_admin_reload_model_failure(monkeypatch):
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Model reload failed"
+    
+def test_admin_rollback_model_with_valid_key(monkeypatch):
+    monkeypatch.setattr(
+        "api.main.ADMIN_API_KEY",
+        "test-admin-api-key",
+    )
+    monkeypatch.setattr(
+        "api.main.prediction_module.model_version",
+        "9",
+    )
+    monkeypatch.setattr(
+        "api.main.rollback_model",
+        lambda model_name: "9",
+    )
+    monkeypatch.setattr(
+        "api.main.reload_model",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "api.main.model_version",
+        "9",
+    )
+
+    response = client.post(
+        "/admin/rollback-model",
+        headers={"x-admin-api-key": "test-admin-api-key"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert (
+        response.json()["message"]
+        == "Model rollback completed successfully"
+    )
+    assert response.json()["model_version"] == "9"
+
+
+def test_admin_rollback_model_without_key():
+    response = client.post("/admin/rollback-model")
+
+    assert response.status_code == 401
+    assert (
+        response.json()["detail"]
+        == "Invalid or missing admin API key"
+    )
+
+
+def test_admin_rollback_model_without_history(monkeypatch):
+    monkeypatch.setattr(
+        "api.main.ADMIN_API_KEY",
+        "test-admin-api-key",
+    )
+    monkeypatch.setattr(
+        "api.main.rollback_model",
+        lambda model_name: (
+            (_ for _ in ()).throw(
+                ValueError(
+                    "Cannot rollback model customer-churn-model "
+                    "version 9: previous production version "
+                    "is not recorded."
+                )
+            )
+        ),
+    )
+
+    response = client.post(
+        "/admin/rollback-model",
+        headers={"x-admin-api-key": "test-admin-api-key"},
+    )
+
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"]
+        == (
+            "Cannot rollback model customer-churn-model "
+            "version 9: previous production version "
+            "is not recorded."
+        )
+    )
