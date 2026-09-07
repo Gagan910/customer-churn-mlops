@@ -38,6 +38,8 @@ jobs:
       - name: Run drift monitoring
         id: monitoring
         env:
+          API_KEY: ${{ secrets.API_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
           SMTP_SERVER: smtp.gmail.com
           SMTP_PORT: 587
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
