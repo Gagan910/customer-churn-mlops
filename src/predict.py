@@ -36,12 +36,10 @@ def load_model():
         if MODEL_SOURCE == "mlflow":
             import mlflow
 
-            loaded_model = mlflow.xgboost.load_model(
-                "models:/customer-churn-model@production"
-            )
+            client = mlflow.MlflowClient()
 
             production_model = (
-                mlflow.MlflowClient().get_model_version_by_alias(
+                client.get_model_version_by_alias(
                     "customer-churn-model",
                     "production",
                 )
@@ -51,9 +49,20 @@ def load_model():
                 production_model.version
             )
 
-            preprocessor_path = mlflow.artifacts.download_artifacts(
-                run_id=production_model.run_id,
-                artifact_path="model/preprocessor.pkl",
+            model_uri = (
+                f"models:/customer-churn-model/"
+                f"{loaded_model_version}"
+            )
+
+            loaded_model = mlflow.xgboost.load_model(
+                model_uri
+            )
+
+            preprocessor_path = (
+                mlflow.artifacts.download_artifacts(
+                    run_id=production_model.run_id,
+                    artifact_path="model/preprocessor.pkl",
+                )
             )
 
             loaded_preprocessor = joblib.load(
@@ -62,6 +71,7 @@ def load_model():
 
         else:
             loaded_model = joblib.load(MODEL_PATH)
+
             loaded_preprocessor = joblib.load(
                 PREPROCESSOR_PATH
             )
@@ -127,9 +137,11 @@ def load_canary_model():
             str(CANARY_MODEL_VERSION),
         )
 
-        preprocessor_path = mlflow.artifacts.download_artifacts(
-            run_id=canary_model_info.run_id,
-            artifact_path="model/preprocessor.pkl",
+        preprocessor_path = (
+            mlflow.artifacts.download_artifacts(
+                run_id=canary_model_info.run_id,
+                artifact_path="model/preprocessor.pkl",
+            )
         )
 
         loaded_canary_preprocessor = joblib.load(
@@ -274,7 +286,9 @@ def predict_churn(customer_data, request_id=None):
         selected_model_version,
     )
 
-    processed_data = selected_preprocessor.transform(data)
+    processed_data = selected_preprocessor.transform(
+        data
+    )
 
     probability = selected_model.predict_proba(
         processed_data
