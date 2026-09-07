@@ -46,7 +46,7 @@ jobs:
           MLFLOW_TRACKING_URI: https://dagshub.com/Gagan910/customer-churn-mlops.mlflow
           MLFLOW_TRACKING_USERNAME: Gagan910
           MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
-          CANARY_MODEL_VERSION: "8"
+          CANARY_MODEL_VERSION: ${{ vars.CANARY_MODEL_VERSION }}
         run: |
           python monitoring/monitor.py
 
