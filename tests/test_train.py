@@ -4,6 +4,7 @@ from src.train import (
     get_training_environment,
     passes_production_comparison_gate,
     passes_production_quality_gate,
+    promote_canary_to_production,
     promote_model_to_production,
     rollback_model,
 )
@@ -359,3 +360,71 @@ def test_rollback_model_fails_without_previous_version(
         )
 
     assert promoted_alias == []
+    
+def test_canary_promotion_requires_ready_evaluation(
+    monkeypatch,
+):
+    promoted = []
+
+    def fake_promote(model_name, model_version):
+        promoted.append(
+            (
+                model_name,
+                model_version,
+            )
+        )
+
+    monkeypatch.setattr(
+        "src.train.promote_model_to_production",
+        fake_promote,
+    )
+
+    import pytest
+
+    with pytest.raises(
+        ValueError,
+        match="Canary is not ready for production promotion",
+    ):
+        promote_canary_to_production(
+            "customer-churn-model",
+            {
+                "ready": False,
+                "model_version": "8",
+            },
+        )
+
+    assert promoted == []
+
+
+def test_canary_promotion_calls_production_promotion_when_ready(
+    monkeypatch,
+):
+    promoted = []
+
+    def fake_promote(model_name, model_version):
+        promoted.append(
+            (
+                model_name,
+                model_version,
+            )
+        )
+
+    monkeypatch.setattr(
+        "src.train.promote_model_to_production",
+        fake_promote,
+    )
+
+    promote_canary_to_production(
+        "customer-churn-model",
+        {
+            "ready": True,
+            "model_version": "8",
+        },
+    )
+
+    assert promoted == [
+        (
+            "customer-churn-model",
+            "8",
+        )
+    ]

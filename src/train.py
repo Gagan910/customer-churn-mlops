@@ -129,6 +129,29 @@ def promote_model_to_production(model_name, model_version):
             f"{previous_production_version}"
         )
         
+def promote_canary_to_production(
+    model_name,
+    canary_evaluation,
+):
+    if not canary_evaluation.get("ready", False):
+        raise ValueError(
+            "Canary is not ready for production promotion."
+        )
+
+    canary_version = canary_evaluation.get(
+        "model_version"
+    )
+
+    if canary_version is None:
+        raise ValueError(
+            "Canary model version is missing."
+        )
+
+    promote_model_to_production(
+        model_name,
+        canary_version,
+    )
+        
 def rollback_model(model_name):
     client = mlflow.MlflowClient()
 
