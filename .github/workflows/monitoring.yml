@@ -2,6 +2,12 @@ name: Data Drift Monitoring
 
 on:
   workflow_dispatch:
+    inputs:
+      force_retrain:
+        description: "Force retraining and canary evaluation"
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: "0 9 * * *"
 
@@ -83,7 +89,7 @@ jobs:
   retrain:
     needs: monitor
 
-    if: needs.monitor.outputs.retrain_required == 'true'
+    if: needs.monitor.outputs.retrain_required == 'true' || inputs.force_retrain == true
 
     runs-on: ubuntu-latest
 
