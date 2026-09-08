@@ -2,6 +2,7 @@ import joblib
 import logging
 import random
 import pandas as pd
+
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from src.config import (
     CANARY_ENABLED,
     CANARY_TRAFFIC_PERCENT,
     CANARY_MODEL_VERSION,
+    MLFLOW_TRACKING_URI,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,12 +31,28 @@ canary_preprocessor = None
 canary_model_version = None
 
 
+def _configure_mlflow():
+    import mlflow
+
+    if hasattr(mlflow, "set_tracking_uri"):
+        mlflow.set_tracking_uri(
+            MLFLOW_TRACKING_URI
+        )
+
+        logger.info(
+            "MLflow configured | tracking_uri=%s",
+            MLFLOW_TRACKING_URI,
+        )
+
+    return mlflow
+
+
 def load_model():
     try:
         loaded_model_version = "local"
 
         if MODEL_SOURCE == "mlflow":
-            import mlflow
+            mlflow = _configure_mlflow()
 
             client = mlflow.MlflowClient()
 
@@ -70,7 +88,9 @@ def load_model():
             )
 
         else:
-            loaded_model = joblib.load(MODEL_PATH)
+            loaded_model = joblib.load(
+                MODEL_PATH
+            )
 
             loaded_preprocessor = joblib.load(
                 PREPROCESSOR_PATH
@@ -119,7 +139,7 @@ def load_canary_model():
                 "Canary model requires MODEL_SOURCE=mlflow."
             )
 
-        import mlflow
+        mlflow = _configure_mlflow()
 
         model_uri = (
             f"models:/customer-churn-model/"
@@ -165,15 +185,18 @@ def load_canary_model():
             loaded_canary_version,
         )
 
-    except Exception:
-        logger.exception(
-            "Failed to load canary model | "
-            "model_source=%s | model_version=%s",
-            MODEL_SOURCE,
-            CANARY_MODEL_VERSION,
-        )
+        except Exception as exc:
+            logger.exception(
+                "Failed to load canary model | "
+                "model_source=%s | model_version=%s | "
+                "error_type=%s | error=%s",
+                MODEL_SOURCE,
+                CANARY_MODEL_VERSION,
+                type(exc).__name__,
+                str(exc),
+            )
 
-        return None, None, None
+            return None, None, None
 
 
 model, preprocessor, model_version = load_model()
@@ -201,7 +224,10 @@ def reload_model():
         canary_model_version,
     ) = load_canary_model()
 
-    return model is not None and preprocessor is not None
+    return (
+        model is not None
+        and preprocessor is not None
+    )
 
 
 def _select_prediction_model():
@@ -212,7 +238,10 @@ def _select_prediction_model():
         and canary_preprocessor is not None
         and canary_model_version is not None
     ):
-        canary_roll = random.uniform(0, 100)
+        canary_roll = random.uniform(
+            0,
+            100,
+        )
 
         if canary_roll < CANARY_TRAFFIC_PERCENT:
             logger.info(
@@ -240,10 +269,13 @@ def _select_prediction_model():
             model_version,
         )
 
-    elif CANARY_ENABLED and CANARY_TRAFFIC_PERCENT > 0:
+    elif (
+        CANARY_ENABLED
+        and CANARY_TRAFFIC_PERCENT > 0
+    ):
         logger.warning(
-            "Canary traffic requested but canary model is unavailable | "
-            "falling back to production | "
+            "Canary traffic requested but canary model "
+            "is unavailable | falling back to production | "
             "canary_model_version=%s",
             CANARY_MODEL_VERSION,
         )
@@ -256,7 +288,10 @@ def _select_prediction_model():
     )
 
 
-def predict_churn(customer_data, request_id=None):
+def predict_churn(
+    customer_data,
+    request_id=None,
+):
     (
         selected_model,
         selected_preprocessor,
@@ -269,39 +304,49 @@ def predict_churn(customer_data, request_id=None):
         or selected_preprocessor is None
     ):
         logger.error(
-            "Prediction unavailable because model or preprocessor "
-            "is not loaded | request_id=%s | model_role=%s",
+            "Prediction unavailable because model or "
+            "preprocessor is not loaded | "
+            "request_id=%s | model_role=%s",
             request_id,
             selected_model_role,
         )
-        raise RuntimeError("Model is not available.")
+        raise RuntimeError(
+            "Model is not available."
+        )
 
-    data = pd.DataFrame([customer_data])
+    data = pd.DataFrame(
+        [customer_data]
+    )
 
     logger.info(
-        "Churn prediction request received | request_id=%s | "
-        "model_role=%s | model_version=%s",
+        "Churn prediction request received | "
+        "request_id=%s | model_role=%s | "
+        "model_version=%s",
         request_id,
         selected_model_role,
         selected_model_version,
     )
 
-    processed_data = selected_preprocessor.transform(
-        data
+    processed_data = (
+        selected_preprocessor.transform(data)
     )
 
-    probability = selected_model.predict_proba(
-        processed_data
-    )[0][1]
+    probability = (
+        selected_model.predict_proba(
+            processed_data
+        )[0][1]
+    )
 
     prediction = int(
         probability >= CHURN_THRESHOLD
     )
 
     logger.info(
-        "Churn prediction completed | request_id=%s | "
-        "model_source=%s | model_role=%s | model_version=%s | "
-        "probability=%.4f | threshold=%.2f | prediction=%d",
+        "Churn prediction completed | "
+        "request_id=%s | model_source=%s | "
+        "model_role=%s | model_version=%s | "
+        "probability=%.4f | threshold=%.2f | "
+        "prediction=%d",
         request_id,
         MODEL_SOURCE,
         selected_model_role,
@@ -343,10 +388,19 @@ def predict_churn(customer_data, request_id=None):
         for column in log_columns
     }
 
-    log_data["timestamp"] = datetime.now().isoformat()
-    log_data["churn_probability"] = float(probability)
+    log_data["timestamp"] = (
+        datetime.now().isoformat()
+    )
+
+    log_data["churn_probability"] = float(
+        probability
+    )
+
     log_data["prediction"] = prediction
-    log_data["model_version"] = selected_model_version
+
+    log_data["model_version"] = (
+        selected_model_version
+    )
 
     log_path = (
         BASE_DIR
@@ -371,6 +425,8 @@ def predict_churn(customer_data, request_id=None):
     )
 
     return {
-        "churn_probability": float(probability),
+        "churn_probability": float(
+            probability
+        ),
         "prediction": prediction,
     }

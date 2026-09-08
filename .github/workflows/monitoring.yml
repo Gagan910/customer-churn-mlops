@@ -6,12 +6,16 @@ on:
     - cron: "0 9 * * *"
 
 jobs:
+
+  # ==================================================
+  # 1. Monitoring
+  # ==================================================
+
   monitor:
     runs-on: ubuntu-latest
 
     outputs:
       retrain_required: ${{ steps.monitoring.outputs.retrain_required }}
-      canary_ready: ${{ steps.monitoring.outputs.canary_ready }}
       canary_model_version: ${{ steps.monitoring.outputs.canary_model_version }}
 
     steps:
@@ -32,6 +36,10 @@ jobs:
         env:
           API_KEY: ${{ secrets.API_KEY }}
           ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          MLFLOW_TRACKING_URI: https://dagshub.com/Gagan910/customer-churn-mlops.mlflow
+          MLFLOW_TRACKING_USERNAME: Gagan910
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          CANARY_MODEL_VERSION: ${{ vars.CANARY_MODEL_VERSION }}
         run: |
           python monitoring/generate_predictions.py
 
@@ -59,25 +67,184 @@ jobs:
           name: drift-report
           path: monitoring/drift_report.html
 
-  canary-evaluation:
+
+  # ==================================================
+  # 2. Retrain and register candidate
+  # ==================================================
+
+  retrain:
     needs: monitor
+
+    if: needs.monitor.outputs.retrain_required == 'true'
+
+    runs-on: ubuntu-latest
+
+    outputs:
+      candidate_model_version: ${{ steps.retrain.outputs.candidate_model_version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Retrain and register candidate
+        id: retrain
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          MLFLOW_TRACKING_URI: https://dagshub.com/Gagan910/customer-churn-mlops.mlflow
+          MLFLOW_TRACKING_USERNAME: Gagan910
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          MODEL_VERSION=$(python -c "from src.train import train_model; print(train_model())" | tail -n 1)
+
+          echo "Candidate model version: $MODEL_VERSION"
+
+          echo "candidate_model_version=$MODEL_VERSION" >> "$GITHUB_OUTPUT"
+
+
+  # ==================================================
+  # 3. Generate dedicated canary evaluation traffic
+  # ==================================================
+
+  canary-predictions:
+    needs:
+      - monitor
+      - retrain
+
+    if: needs.retrain.result == 'success'
+
     runs-on: ubuntu-latest
 
     steps:
-      - name: Report canary decision
-        env:
-          CANARY_READY: ${{ needs.monitor.outputs.canary_ready }}
-          CANARY_MODEL_VERSION: ${{ needs.monitor.outputs.canary_model_version }}
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
         run: |
-          if [ "$CANARY_READY" = "true" ]; then
-            echo "CANARY_READY: Canary v$CANARY_MODEL_VERSION passed all deployment checks."
-          else
-            echo "CANARY_NOT_READY: Canary v$CANARY_MODEL_VERSION has not passed all deployment checks."
-          fi
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate canary evaluation predictions
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          MLFLOW_TRACKING_URI: https://dagshub.com/Gagan910/customer-churn-mlops.mlflow
+          MLFLOW_TRACKING_USERNAME: Gagan910
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          CANARY_ENABLED: "true"
+          CANARY_TRAFFIC_PERCENT: "100"
+          CANARY_MODEL_VERSION: ${{ needs.retrain.outputs.candidate_model_version }}
+          CANARY_EVALUATION_MODE: "true"
+        run: |
+          python monitoring/generate_predictions.py
+
+      - name: Upload canary evaluation prediction log
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-evaluation-prediction-log
+          path: data/processed/prediction_logs.csv
+
+
+  # ==================================================
+  # 4. Canary evaluation
+  # ==================================================
+
+  canary-evaluation:
+    needs:
+      - retrain
+      - canary-predictions
+
+    if: needs.canary-predictions.result == 'success'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download canary evaluation prediction log
+        uses: actions/download-artifact@v4
+        with:
+          name: canary-evaluation-prediction-log
+          path: data/processed
+
+      - name: Evaluate candidate as canary
+        id: evaluate
+        env:
+          MLFLOW_TRACKING_URI: https://dagshub.com/Gagan910/customer-churn-mlops.mlflow
+          MLFLOW_TRACKING_USERNAME: Gagan910
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          CANARY_MODEL_VERSION: ${{ needs.retrain.outputs.candidate_model_version }}
+        run: |
+          python -c "
+          from monitoring.monitor import (
+              load_canary_evaluation_data,
+              calculate_model_metrics_by_version,
+              evaluate_canary,
+          )
+
+          canary_data = load_canary_evaluation_data()
+
+          metrics_by_version = calculate_model_metrics_by_version(
+              canary_data
+          )
+
+          result = evaluate_canary(
+              canary_data,
+              metrics_by_version,
+          )
+
+          print('Canary evaluation result:')
+          print(result)
+
+          with open('$GITHUB_OUTPUT', 'a') as output:
+              output.write(
+                  'canary_ready='
+                  + ('true' if result.get('ready', False) else 'false')
+                  + '\\n'
+              )
+
+          if not result.get('ready', False):
+              raise SystemExit('Canary evaluation failed.')
+          "
+
+
+  # ==================================================
+  # 5. Promote evaluated canary
+  # ==================================================
 
   canary-promotion:
-    needs: monitor
-    if: needs.monitor.outputs.canary_ready == 'true'
+    needs:
+      - retrain
+      - canary-evaluation
+
+    if: needs.canary-evaluation.result == 'success'
+
     runs-on: ubuntu-latest
 
     steps:
@@ -99,44 +266,45 @@ jobs:
           MLFLOW_TRACKING_URI: https://dagshub.com/Gagan910/customer-churn-mlops.mlflow
           MLFLOW_TRACKING_USERNAME: Gagan910
           MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
-          MODEL_VERSION: ${{ needs.monitor.outputs.canary_model_version }}
+          MODEL_VERSION: ${{ needs.retrain.outputs.candidate_model_version }}
         run: |
-          python -c "from src.train import promote_canary_to_production; promote_canary_to_production('customer-churn-model', {'ready': True, 'model_version': '${MODEL_VERSION}'})"
+          python -c "
+          from src.train import promote_canary_to_production
+
+          promote_canary_to_production(
+              'customer-churn-model',
+              {
+                  'ready': True,
+                  'model_version': '${MODEL_VERSION}',
+              },
+          )
+          "
 
       - name: Verify production alias
         env:
           MLFLOW_TRACKING_URI: https://dagshub.com/Gagan910/customer-churn-mlops.mlflow
           MLFLOW_TRACKING_USERNAME: Gagan910
           MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
-          MODEL_VERSION: ${{ needs.monitor.outputs.canary_model_version }}
+          MODEL_VERSION: ${{ needs.retrain.outputs.candidate_model_version }}
         run: |
-          python -c "import mlflow; actual = str(mlflow.MlflowClient().get_model_version_by_alias('customer-churn-model', 'production').version); expected = '${MODEL_VERSION}'; print(f'Production model version: {actual}'); assert actual == expected, f'Expected production version {expected}, found {actual}'"
+          python -c "
+          import mlflow
 
-  retrain:
-    needs: monitor
-    if: needs.monitor.outputs.retrain_required == 'true'
-    runs-on: ubuntu-latest
+          client = mlflow.MlflowClient()
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+          actual = str(
+              client.get_model_version_by_alias(
+                  'customer-churn-model',
+                  'production',
+              ).version
+          )
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+          expected = '${MODEL_VERSION}'
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          print(f'Production model version: {actual}')
 
-      - name: Retrain model
-        env:
-          API_KEY: ${{ secrets.API_KEY }}
-          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
-          MLFLOW_TRACKING_URI: https://dagshub.com/Gagan910/customer-churn-mlops.mlflow
-          MLFLOW_TRACKING_USERNAME: Gagan910
-          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
-        run: |
-          python -m src.train
+          assert actual == expected, (
+              f'Expected production version {expected}, '
+              f'found {actual}'
+          )
+          "

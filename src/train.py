@@ -128,7 +128,8 @@ def promote_model_to_production(model_name, model_version):
             f"Previous production version: "
             f"{previous_production_version}"
         )
-        
+
+
 def promote_canary_to_production(
     model_name,
     canary_evaluation,
@@ -151,7 +152,8 @@ def promote_canary_to_production(
         model_name,
         canary_version,
     )
-        
+
+
 def rollback_model(model_name):
     client = mlflow.MlflowClient()
 
@@ -187,7 +189,10 @@ def rollback_model(model_name):
     return previous_version
 
 
-def passes_production_quality_gate(roc_auc, minimum_roc_auc=0.80):
+def passes_production_quality_gate(
+    roc_auc,
+    minimum_roc_auc=0.80,
+):
     return roc_auc >= minimum_roc_auc
 
 
@@ -222,6 +227,9 @@ def passes_production_comparison_gate(
 # --------------------------------------------------
 
 def train_model():
+    mlflow.set_tracking_uri(
+        MLFLOW_TRACKING_URI
+    )
 
     # --------------------------------------------------
     # Load data
@@ -229,19 +237,40 @@ def train_model():
 
     df = pd.read_csv(DATA_PATH)
 
-    training_data_sha256 = calculate_file_hash(DATA_PATH)
+    training_data_sha256 = calculate_file_hash(
+        DATA_PATH
+    )
 
+    # --------------------------------------------------
     # Target
-    df["Churn"] = df["Churn"].map({"No": 0, "Yes": 1})
+    # --------------------------------------------------
 
+    df["Churn"] = df["Churn"].map(
+        {
+            "No": 0,
+            "Yes": 1,
+        }
+    )
+
+    # --------------------------------------------------
     # Remove unnecessary / EDA-only columns
-    drop_columns = ["customerID", "TenureGroup"]
+    # --------------------------------------------------
+
+    drop_columns = [
+        "customerID",
+        "TenureGroup",
+    ]
 
     for column in drop_columns:
         if column in df.columns:
-            df = df.drop(columns=column)
+            df = df.drop(
+                columns=column
+            )
 
-    X = df.drop(columns=["Churn"])
+    X = df.drop(
+        columns=["Churn"]
+    )
+
     y = df["Churn"]
 
     # --------------------------------------------------
@@ -268,32 +297,55 @@ def train_model():
     ]
 
     categorical_cols = [
-        column for column in X.columns
+        column
+        for column in X.columns
         if column not in numerical_cols
     ]
 
     preprocessor = ColumnTransformer(
         transformers=[
-            ("num", StandardScaler(), numerical_cols),
+            (
+                "num",
+                StandardScaler(),
+                numerical_cols,
+            ),
             (
                 "cat",
-                OneHotEncoder(handle_unknown="ignore"),
+                OneHotEncoder(
+                    handle_unknown="ignore"
+                ),
                 categorical_cols,
             ),
         ]
     )
 
-    X_train_processed = preprocessor.fit_transform(X_train)
-    X_test_processed = preprocessor.transform(X_test)
+    X_train_processed = (
+        preprocessor.fit_transform(
+            X_train
+        )
+    )
+
+    X_test_processed = (
+        preprocessor.transform(
+            X_test
+        )
+    )
 
     # --------------------------------------------------
     # MLflow experiment
     # --------------------------------------------------
 
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    mlflow.set_experiment("customer-churn-prediction")
+    mlflow.set_tracking_uri(
+        MLFLOW_TRACKING_URI
+    )
 
-    with mlflow.start_run(run_name="tuned_xgboost"):
+    mlflow.set_experiment(
+        "customer-churn-prediction"
+    )
+
+    with mlflow.start_run(
+        run_name="tuned_xgboost"
+    ):
 
         # --------------------------------------------------
         # XGBoost + Hyperparameter Tuning
@@ -305,9 +357,20 @@ def train_model():
         )
 
         param_grid = {
-            "n_estimators": [100, 200],
-            "max_depth": [3, 4, 5],
-            "learning_rate": [0.03, 0.05, 0.1],
+            "n_estimators": [
+                100,
+                200,
+            ],
+            "max_depth": [
+                3,
+                4,
+                5,
+            ],
+            "learning_rate": [
+                0.03,
+                0.05,
+                0.1,
+            ],
         }
 
         grid_search = GridSearchCV(
@@ -318,17 +381,24 @@ def train_model():
             n_jobs=-1,
         )
 
-        grid_search.fit(X_train_processed, y_train)
+        grid_search.fit(
+            X_train_processed,
+            y_train,
+        )
 
-        best_model = grid_search.best_estimator_
+        best_model = (
+            grid_search.best_estimator_
+        )
 
         # --------------------------------------------------
         # Predictions
         # --------------------------------------------------
 
-        y_probability = best_model.predict_proba(
-            X_test_processed
-        )[:, 1]
+        y_probability = (
+            best_model.predict_proba(
+                X_test_processed
+            )[:, 1]
+        )
 
         y_pred = (
             y_probability >= CHURN_THRESHOLD
@@ -338,25 +408,57 @@ def train_model():
         # Metrics
         # --------------------------------------------------
 
-        accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred)
-        recall = recall_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred)
-        roc_auc = roc_auc_score(y_test, y_probability)
+        accuracy = accuracy_score(
+            y_test,
+            y_pred,
+        )
+
+        precision = precision_score(
+            y_test,
+            y_pred,
+        )
+
+        recall = recall_score(
+            y_test,
+            y_pred,
+        )
+
+        f1 = f1_score(
+            y_test,
+            y_pred,
+        )
+
+        roc_auc = roc_auc_score(
+            y_test,
+            y_probability,
+        )
 
         # --------------------------------------------------
         # Production quality gate
         # --------------------------------------------------
 
-        model_name = "customer-churn-model"
+        model_name = (
+            "customer-churn-model"
+        )
 
-        if not passes_production_quality_gate(roc_auc):
+        if not passes_production_quality_gate(
+            roc_auc
+        ):
             raise ValueError(
                 f"Model failed production quality gate: "
-                f"ROC-AUC={roc_auc:.4f}, required>=0.80"
+                f"ROC-AUC={roc_auc:.4f}, "
+                f"required>=0.80"
             )
 
-        production_roc_auc = get_production_roc_auc(model_name)
+        # --------------------------------------------------
+        # Candidate vs production gate
+        # --------------------------------------------------
+
+        production_roc_auc = (
+            get_production_roc_auc(
+                model_name
+            )
+        )
 
         if not passes_production_comparison_gate(
             roc_auc,
@@ -365,14 +467,17 @@ def train_model():
             raise ValueError(
                 f"Model failed production comparison gate: "
                 f"candidate ROC-AUC={roc_auc:.4f}, "
-                f"production ROC-AUC={production_roc_auc:.4f}"
+                f"production ROC-AUC="
+                f"{production_roc_auc:.4f}"
             )
 
         # --------------------------------------------------
         # Log parameters
         # --------------------------------------------------
 
-        mlflow.log_params(grid_search.best_params_)
+        mlflow.log_params(
+            grid_search.best_params_
+        )
 
         mlflow.log_param(
             "churn_threshold",
@@ -396,18 +501,44 @@ def train_model():
         # Log metrics
         # --------------------------------------------------
 
-        mlflow.log_metric("accuracy", accuracy)
-        mlflow.log_metric("precision", precision)
-        mlflow.log_metric("recall", recall)
-        mlflow.log_metric("f1_score", f1)
-        mlflow.log_metric("roc_auc", roc_auc)
+        mlflow.log_metric(
+            "accuracy",
+            accuracy,
+        )
+
+        mlflow.log_metric(
+            "precision",
+            precision,
+        )
+
+        mlflow.log_metric(
+            "recall",
+            recall,
+        )
+
+        mlflow.log_metric(
+            "f1_score",
+            f1,
+        )
+
+        mlflow.log_metric(
+            "roc_auc",
+            roc_auc,
+        )
 
         # --------------------------------------------------
         # Save model and preprocessor
         # --------------------------------------------------
 
-        joblib.dump(best_model, MODEL_PATH)
-        joblib.dump(preprocessor, PREPROCESSOR_PATH)
+        joblib.dump(
+            best_model,
+            MODEL_PATH,
+        )
+
+        joblib.dump(
+            preprocessor,
+            PREPROCESSOR_PATH,
+        )
 
         # --------------------------------------------------
         # Log artifacts
@@ -438,32 +569,72 @@ def train_model():
             registered_model_name=model_name,
         )
 
-        registered_version = model_info.registered_model_version
-
-        # --------------------------------------------------
-        # Promote to production
-        # --------------------------------------------------
-
-        promote_model_to_production(
-            model_name,
-            registered_version,
+        registered_version = (
+            model_info.registered_model_version
         )
 
-        print("Training completed successfully.")
-        print("Best parameters:", grid_search.best_params_)
+        # --------------------------------------------------
+        # Candidate model
+        # --------------------------------------------------
+
+        print(
+            "Model registered successfully."
+        )
+
+        print(
+            f"Registered model version: "
+            f"{registered_version}"
+        )
+
+        print(
+            "Model remains a candidate."
+        )
+
+        print(
+            "Canary evaluation is required "
+            "before production promotion."
+        )
+
+        print(
+            "Training completed successfully."
+        )
+
+        print(
+            "Best parameters:",
+            grid_search.best_params_,
+        )
+
         print(
             f"Training data SHA-256: "
             f"{training_data_sha256}"
         )
+
         print(
             f"Training environment: "
             f"{ENVIRONMENT_PATH}"
         )
-        print(f"Accuracy:  {accuracy:.4f}")
-        print(f"Precision: {precision:.4f}")
-        print(f"Recall:    {recall:.4f}")
-        print(f"F1 Score:  {f1:.4f}")
-        print(f"ROC-AUC:   {roc_auc:.4f}")
+
+        print(
+            f"Accuracy:  {accuracy:.4f}"
+        )
+
+        print(
+            f"Precision: {precision:.4f}"
+        )
+
+        print(
+            f"Recall:    {recall:.4f}"
+        )
+
+        print(
+            f"F1 Score:  {f1:.4f}"
+        )
+
+        print(
+            f"ROC-AUC:   {roc_auc:.4f}"
+        )
+
+        return registered_version
 
 
 # --------------------------------------------------
