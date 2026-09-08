@@ -185,18 +185,18 @@ def load_canary_model():
             loaded_canary_version,
         )
 
-        except Exception as exc:
-            logger.exception(
-                "Failed to load canary model | "
-                "model_source=%s | model_version=%s | "
-                "error_type=%s | error=%s",
-                MODEL_SOURCE,
-                CANARY_MODEL_VERSION,
-                type(exc).__name__,
-                str(exc),
-            )
+    except Exception as exc:
+        logger.exception(
+            "Failed to load canary model | "
+            "model_source=%s | model_version=%s | "
+            "error_type=%s | error=%s",
+            MODEL_SOURCE,
+            CANARY_MODEL_VERSION,
+            type(exc).__name__,
+            str(exc),
+        )
 
-            return None, None, None
+        return None, None, None
 
 
 model, preprocessor, model_version = load_model()
