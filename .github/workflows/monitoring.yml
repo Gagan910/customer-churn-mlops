@@ -377,7 +377,6 @@ jobs:
           MLFLOW_TRACKING_USERNAME: Gagan910
           MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
           CANARY_MODEL_VERSION: ${{ needs.retrain.outputs.candidate_model_version }}
-          CANARY_MINIMUM_SAMPLES: "1000000"
         run: |
           python -c "
           from monitoring.monitor import (
