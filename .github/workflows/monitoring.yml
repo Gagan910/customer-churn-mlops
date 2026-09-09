@@ -138,7 +138,30 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    outputs:
+      previous_canary_version: ${{ steps.previous-canary.outputs.previous_canary_version }}
+
     steps:
+      - name: Capture previous Render canary model version
+        id: previous-canary
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-dach63jm8hqs73aumrf0
+        run: |
+          response=$(curl --fail-with-body \
+            --request GET \
+            --header "Accept: application/json" \
+            --header "Authorization: Bearer ${RENDER_API_KEY}" \
+            "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/env-vars/CANARY_MODEL_VERSION")
+
+          echo "Current Render canary configuration:"
+          echo "${response}"
+
+          PREVIOUS_CANARY_VERSION=$(echo "${response}" | python -c "import json,sys; print(json.load(sys.stdin)['value'])")
+
+          echo "Previous canary model version: ${PREVIOUS_CANARY_VERSION}"
+          echo "previous_canary_version=${PREVIOUS_CANARY_VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Configure Render canary model version
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
@@ -169,13 +192,7 @@ jobs:
           echo "Render deployment response:"
           echo "${response}"
 
-          DEPLOY_ID=$(echo "${response}" | python -c "
-          import json
-          import sys
-
-          response = json.load(sys.stdin)
-          print(response['id'])
-          ")
+          DEPLOY_ID=$(echo "${response}" | python -c "import json,sys; print(json.load(sys.stdin)['id'])")
 
           echo "Render deploy ID: ${DEPLOY_ID}"
           echo "deploy_id=${DEPLOY_ID}" >> "$GITHUB_OUTPUT"
@@ -513,6 +530,135 @@ jobs:
 
           assert actual == expected, (
               f'Expected serving version {expected}, '
+              f'found {actual}'
+          )
+          "
+
+
+  # ==================================================
+  # 7. Restore previous canary after failed evaluation
+  # ==================================================
+
+  canary-cleanup:
+    needs:
+      - configure-canary
+      - canary-predictions
+      - canary-evaluation
+
+    if: |
+      always() &&
+      needs.configure-canary.result == 'success' &&
+      (
+        needs.canary-predictions.result == 'failure' ||
+        needs.canary-evaluation.result == 'failure'
+      )
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Restore previous Render canary model version
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-dach63jm8hqs73aumrf0
+          PREVIOUS_CANARY_VERSION: ${{ needs.configure-canary.outputs.previous_canary_version }}
+        run: |
+          echo "Restoring previous canary model version: ${PREVIOUS_CANARY_VERSION}"
+
+          curl --fail-with-body \
+            --request PUT \
+            --header "Accept: application/json" \
+            --header "Authorization: Bearer ${RENDER_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data "{\"value\":\"${PREVIOUS_CANARY_VERSION}\"}" \
+            "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/env-vars/CANARY_MODEL_VERSION"
+
+      - name: Deploy restored Render canary configuration
+        id: restore-deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-dach63jm8hqs73aumrf0
+        run: |
+          response=$(curl --fail-with-body \
+            --request POST \
+            --header "Accept: application/json" \
+            --header "Authorization: Bearer ${RENDER_API_KEY}" \
+            --header "Content-Type: application/json" \
+            "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys")
+
+          echo "Render restoration deployment response:"
+          echo "${response}"
+
+          DEPLOY_ID=$(echo "${response}" | python -c "import json,sys; print(json.load(sys.stdin)['id'])")
+
+          echo "Render restoration deploy ID: ${DEPLOY_ID}"
+          echo "deploy_id=${DEPLOY_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for restored Render deployment
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-dach63jm8hqs73aumrf0
+          DEPLOY_ID: ${{ steps.restore-deploy.outputs.deploy_id }}
+        run: |
+          for i in {1..30}; do
+            echo "Checking Render restoration deployment ${DEPLOY_ID}..."
+
+            response=$(curl --fail-with-body \
+              --request GET \
+              --header "Accept: application/json" \
+              --header "Authorization: Bearer ${RENDER_API_KEY}" \
+              "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys/${DEPLOY_ID}")
+
+            echo "${response}"
+
+            status=$(echo "${response}" | python -c "import json,sys; print(json.load(sys.stdin)['status'])")
+
+            echo "Deployment status: ${status}"
+
+            if [ "${status}" = "live" ]; then
+              echo "Render restoration deployment is live."
+              exit 0
+            fi
+
+            if [ "${status}" = "failed" ] || \
+               [ "${status}" = "canceled" ] || \
+               [ "${status}" = "deactivated" ]; then
+              echo "Render restoration deployment failed with status: ${status}"
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+          echo "Render restoration deployment did not become live within the expected time."
+          exit 1
+
+      - name: Verify restored Render canary model
+        env:
+          RENDER_APP_URL: ${{ vars.RENDER_APP_URL }}
+          PREVIOUS_CANARY_VERSION: ${{ needs.configure-canary.outputs.previous_canary_version }}
+        run: |
+          response=$(curl --fail-with-body \
+            "${RENDER_APP_URL}/health")
+
+          echo "Health response after canary restoration:"
+          echo "${response}"
+
+          python -c "
+          import json
+
+          response = json.loads('''${response}''')
+
+          actual = str(
+              response.get('canary_loaded_version')
+          )
+
+          expected = '${PREVIOUS_CANARY_VERSION}'
+
+          print(f'Restored canary version: {actual}')
+          print(f'Expected restored version: {expected}')
+
+          assert actual == expected, (
+              f'Expected restored canary version {expected}, '
               f'found {actual}'
           )
           "
