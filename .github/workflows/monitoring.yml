@@ -197,13 +197,7 @@ jobs:
 
             echo "${response}"
 
-            status=$(echo "${response}" | python -c "
-            import json
-            import sys
-
-            response = json.load(sys.stdin)
-            print(response['deploy']['status'])
-            ")
+            status=$(echo "${response}" | python -c "import json,sys; print(json.load(sys.stdin)['status'])")
 
             echo "Deployment status: ${status}"
 
