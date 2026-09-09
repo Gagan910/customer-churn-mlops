@@ -174,7 +174,7 @@ jobs:
           import sys
 
           response = json.load(sys.stdin)
-          print(response['deploy']['id'])
+          print(response['id'])
           ")
 
           echo "Render deploy ID: ${DEPLOY_ID}"
