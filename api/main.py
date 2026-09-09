@@ -359,43 +359,6 @@ def predict(
 
 
 @app.post(
-    "/admin/mlflow-debug",
-    dependencies=[Depends(verify_admin_api_key)],
-)
-def mlflow_debug():
-    try:
-        import mlflow
-
-        client = mlflow.MlflowClient()
-
-        production_model = (
-            client.get_model_version_by_alias(
-                "customer-churn-model",
-                "production",
-            )
-        )
-
-        return {
-            "mlflow_version": mlflow.__version__,
-            "production_alias_version": str(
-                production_model.version
-            ),
-            "production_run_id": production_model.run_id,
-            "application_model_version": model_version,
-        }
-
-    except Exception:
-        logger.exception(
-            "MLflow diagnostic failed"
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail="MLflow diagnostic failed",
-        )
-
-
-@app.post(
     "/admin/reload-model",
     dependencies=[Depends(verify_admin_api_key)],
 )
