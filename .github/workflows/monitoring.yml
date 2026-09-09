@@ -335,3 +335,41 @@ jobs:
               f'found {actual}'
           )
           "
+
+      - name: Reload Render production model
+        env:
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          RENDER_APP_URL: ${{ vars.RENDER_APP_URL }}
+        run: |
+          curl --fail-with-body \
+            --request POST \
+            --header "X-Admin-API-Key: ${ADMIN_API_KEY}" \
+            "${RENDER_APP_URL}/admin/reload-model"
+
+      - name: Verify Render serving version
+        env:
+          RENDER_APP_URL: ${{ vars.RENDER_APP_URL }}
+          MODEL_VERSION: ${{ needs.retrain.outputs.candidate_model_version }}
+        run: |
+          response=$(curl --fail-with-body \
+            "${RENDER_APP_URL}/health")
+
+          echo "Health response:"
+          echo "${response}"
+
+          python -c "
+          import json
+          import os
+
+          response = json.loads('''${response}''')
+          actual = str(response.get('mlflow_production_version'))
+          expected = '${MODEL_VERSION}'
+
+          print(f'Serving production version: {actual}')
+          print(f'Expected production version: {expected}')
+
+          assert actual == expected, (
+              f'Expected serving version {expected}, '
+              f'found {actual}'
+          )
+          "
