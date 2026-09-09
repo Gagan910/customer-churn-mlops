@@ -127,15 +127,156 @@ jobs:
 
 
   # ==================================================
-  # 3. Generate dedicated canary evaluation traffic
+  # 3. Configure Render canary
+  # ==================================================
+
+  configure-canary:
+    needs:
+      - retrain
+
+    if: needs.retrain.result == 'success'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure Render canary model version
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-dach63jm8hqs73aumrf0
+          CANARY_MODEL_VERSION: ${{ needs.retrain.outputs.candidate_model_version }}
+        run: |
+          curl --fail-with-body \
+            --request PUT \
+            --header "Accept: application/json" \
+            --header "Authorization: Bearer ${RENDER_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data "{\"value\":\"${CANARY_MODEL_VERSION}\"}" \
+            "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/env-vars/CANARY_MODEL_VERSION"
+
+      - name: Deploy Render canary configuration
+        id: deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-dach63jm8hqs73aumrf0
+        run: |
+          response=$(curl --fail-with-body \
+            --request POST \
+            --header "Accept: application/json" \
+            --header "Authorization: Bearer ${RENDER_API_KEY}" \
+            --header "Content-Type: application/json" \
+            "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys")
+
+          echo "Render deployment response:"
+          echo "${response}"
+
+          DEPLOY_ID=$(echo "${response}" | python -c "
+          import json
+          import sys
+
+          response = json.load(sys.stdin)
+          print(response['deploy']['id'])
+          ")
+
+          echo "Render deploy ID: ${DEPLOY_ID}"
+          echo "deploy_id=${DEPLOY_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Render deployment
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-dach63jm8hqs73aumrf0
+          DEPLOY_ID: ${{ steps.deploy.outputs.deploy_id }}
+        run: |
+          for i in {1..30}; do
+            echo "Checking Render deployment ${DEPLOY_ID}..."
+
+            response=$(curl --fail-with-body \
+              --request GET \
+              --header "Accept: application/json" \
+              --header "Authorization: Bearer ${RENDER_API_KEY}" \
+              "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys/${DEPLOY_ID}")
+
+            echo "${response}"
+
+            status=$(echo "${response}" | python -c "
+            import json
+            import sys
+
+            response = json.load(sys.stdin)
+            print(response['deploy']['status'])
+            ")
+
+            echo "Deployment status: ${status}"
+
+            if [ "${status}" = "live" ]; then
+              echo "Render deployment is live."
+              exit 0
+            fi
+
+            if [ "${status}" = "failed" ] || \
+               [ "${status}" = "canceled" ] || \
+               [ "${status}" = "deactivated" ]; then
+              echo "Render deployment failed with status: ${status}"
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+          echo "Render deployment did not become live within the expected time."
+          exit 1
+
+      - name: Verify Render canary model
+        env:
+          RENDER_APP_URL: ${{ vars.RENDER_APP_URL }}
+          CANARY_MODEL_VERSION: ${{ needs.retrain.outputs.candidate_model_version }}
+        run: |
+          response=$(curl --fail-with-body \
+            "${RENDER_APP_URL}/health")
+
+          echo "Health response:"
+          echo "${response}"
+
+          python -c "
+          import json
+
+          response = json.loads('''${response}''')
+
+          expected = '${CANARY_MODEL_VERSION}'
+
+          actual = str(
+              response.get('canary_loaded_version')
+          )
+
+          loaded = response.get(
+              'canary_model_loaded'
+          )
+
+          print(f'Canary loaded version: {actual}')
+          print(f'Expected canary version: {expected}')
+          print(f'Canary model loaded: {loaded}')
+
+          assert loaded is True, (
+              'Render canary model is not loaded.'
+          )
+
+          assert actual == expected, (
+              f'Expected canary version {expected}, '
+              f'found {actual}'
+          )
+          "
+
+
+  # ==================================================
+  # 4. Generate dedicated canary evaluation traffic
   # ==================================================
 
   canary-predictions:
     needs:
       - monitor
       - retrain
+      - configure-canary
 
-    if: needs.retrain.result == 'success'
+    if: needs.configure-canary.result == 'success'
 
     runs-on: ubuntu-latest
 
@@ -157,7 +298,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: monitoring-prediction-log
-          path: data/processed    
+          path: data/processed
 
       - name: Generate canary evaluation predictions
         env:
@@ -182,12 +323,13 @@ jobs:
 
 
   # ==================================================
-  # 4. Canary evaluation
+  # 5. Canary evaluation
   # ==================================================
 
   canary-evaluation:
     needs:
       - retrain
+      - configure-canary
       - canary-predictions
 
     if: needs.canary-predictions.result == 'success'
@@ -250,7 +392,7 @@ jobs:
               output.write(
                   'canary_ready='
                   + ('true' if result.get('ready', False) else 'false')
-                  + '\\n'
+                  + '\n'
               )
 
           if not result.get('ready', False):
@@ -259,7 +401,7 @@ jobs:
 
 
   # ==================================================
-  # 5. Promote evaluated canary
+  # 6. Promote evaluated canary
   # ==================================================
 
   canary-promotion:
@@ -317,6 +459,10 @@ jobs:
           python -c "
           import mlflow
 
+          mlflow.set_tracking_uri(
+              '${MLFLOW_TRACKING_URI}'
+          )
+
           client = mlflow.MlflowClient()
 
           actual = str(
@@ -359,10 +505,13 @@ jobs:
 
           python -c "
           import json
-          import os
 
           response = json.loads('''${response}''')
-          actual = str(response.get('mlflow_production_version'))
+
+          actual = str(
+              response.get('mlflow_production_version')
+          )
+
           expected = '${MODEL_VERSION}'
 
           print(f'Serving production version: {actual}')
