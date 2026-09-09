@@ -35,11 +35,6 @@ CANARY_MODEL_VERSION_RAW = os.getenv(
     "",
 )
 
-CANARY_MINIMUM_SAMPLES_RAW = os.getenv(
-    "CANARY_MINIMUM_SAMPLES",
-    "100",
-)
-
 
 def validate_config():
     if MODEL_SOURCE not in {"local", "mlflow"}:
@@ -123,22 +118,6 @@ def validate_config():
                 "Must be a positive integer."
             )
 
-    try:
-        canary_minimum_samples = int(CANARY_MINIMUM_SAMPLES_RAW)
-    except ValueError:
-        raise ValueError(
-            f"Invalid CANARY_MINIMUM_SAMPLES: "
-            f"'{CANARY_MINIMUM_SAMPLES_RAW}'. "
-            "Must be a positive integer."
-        )
-
-    if canary_minimum_samples <= 0:
-        raise ValueError(
-            f"Invalid CANARY_MINIMUM_SAMPLES: "
-            f"{canary_minimum_samples}. "
-            "Must be a positive integer."
-        )
-
 
 validate_config()
 
@@ -155,5 +134,3 @@ CANARY_MODEL_VERSION = (
     if CANARY_MODEL_VERSION_RAW.strip()
     else None
 )
-
-CANARY_MINIMUM_SAMPLES = int(CANARY_MINIMUM_SAMPLES_RAW)
